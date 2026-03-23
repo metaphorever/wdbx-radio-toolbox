@@ -1,0 +1,78 @@
+Sunday,050000,porter,Wakin' Up With Porter,1
+Sunday,100000,rockersparadise,Rocker's Paradise,1
+Sunday,120000,gumbo,Louisiana Gumbo Pot,1
+Sunday,140000,musicatropical,Musica Tropical,1
+Sunday,160000,buttafly,In The Crates,1
+Sunday,180000,elecblues,The Electric Blues Hours,1
+Sunday,200000,stonedsoup,Stoned Soup,1
+Sunday,220000,poodle,DJ Warren Show,1
+Monday,000000,deadsnails,dead snails,1
+Monday,060000,timecapsul,The Time Capsule,1
+Monday,090000,shawnee,Radio Free Shawnee,1
+Monday,100000,seeinggreen,Seeing Green - Talk of the Town,1
+Monday,103000,classmatters,Class Matters,1
+Monday,110000,chuckpm,608 Jazz,1
+Monday,130000,chuckam,Chuck's Place,1
+Monday,150000,pawpaw,The Essence of Anarchony,1
+Monday,180000,callwild,Call Of The Wild,1
+Monday,200000,chillibobdylan,Chillin with Bob Dylan,0
+Monday,210000,encouragementology,Encouragementology,0
+Monday,220000,shownoname,The Show with No Name,1
+Tuesday,000000,onslaught,Onslaught of Steel,1
+Tuesday,050000,airhugsaubre,Air Hugs With Aubree,1
+Tuesday,070000,papasmusic,Papa's Music,1
+Tuesday,090000,counterpower,Counterpower Radio Hour,0
+Tuesday,090000,notyourgrandparplaylist,Not Your Grandpa's Playlist,0
+Tuesday,100000,okboome,OK Boomer,0
+Tuesday,110000,terrysjukeboxmemories,Terry's Jukebox Memories,1
+Tuesday,130000,sunnyafternoshow,The Sunny Afternoon Show,1
+Tuesday,150000,dollarbillsvinylvault,Dollar Bill's Vinyl Vault,0
+Tuesday,150000,notnecessarbluegras, Not Necessarily Bluegrass ,1
+Tuesday,180000,hades,80s Hades ,1
+Tuesday,200000,skirt,Her Turn,1
+Tuesday,220000,marveloumusicmidwest,Marvelous Music of the Midwest,1
+Wednesday,000000,joebauerradiohour,Joe Bauer Radio Hour,1
+Wednesday,070000,islandreport,Island Report,1
+Wednesday,090000,queer,Isn't It Queer?,1
+Wednesday,110000,fiasco,Folk Fiasco,1
+Wednesday,130000,playground,The Playground,0
+Wednesday,130000,downhomecooki,Down Home Cookin',0
+Wednesday,150000,madhippie,The Mad Hippie Show,1
+Wednesday,180000,sayitmusi,Say It With Music,1
+Wednesday,200000,yallternative,The Y'allternative,0
+Wednesday,200000,lulluckyunluck,LUL (Lucky Unlucky),0
+Wednesday,220000,grateful,The Grateful Dead Show,1
+Thursday,080000,elevatinenergya,Elevating Energy,0
+Thursday,080000,wordgodstudy,Word of God Study,0
+Thursday,090000,eyeq,EYE-Q,0
+Thursday,100000,muse,The Muse,0
+Thursday,103000,occupy,Occupy The Airwaves,1
+Thursday,110000,backblueg,Back 2 Bluegrass 2.0,1
+Thursday,130000,jammingemily,Jamming With Emily,0
+Thursday,130000,folksounds,Folksounds,0
+Thursday,130000,folksounds,Folksounds,1
+Thursday,150000,soundssouthernillinois,The Sounds of Southern Illinois,1
+Thursday,180000,therenomusiclikeshowmusic,There's No Music Like Show Music,1
+Thursday,200000,lollypop,Professor Wittman's Lolly Pop Shoppe,1
+Thursday,220000,pleasureprogram,The Pleasure Program,1
+Friday,060000,ayampbeetvsmornmixe,Friday Morning Music & Musings,1
+Friday,090000,okboome,OK Boomer,0
+Friday,100000,commspirit,Your Community Spirit,1
+Friday,103000,localdemocrac,Local Democracy,1
+Friday,110000,lonesome,Lonesome Roy's Radio Hoedown,1
+Friday,130000,fridaymusicmatinee,Friday Music Matinee,0
+Friday,130000,stickspicks,Stick's Picks,1
+Friday,150000,rootsrockin,Roots Rockin' Reggae,1
+Friday,180000,welcomeweekend,Welcome to the Weekend,0
+Friday,180000,ladyaslyricsheartl,Lady A's Lyrics & Heartlines,1
+Friday,200000,serendipity,Serendipity,1
+Friday,220000,theshow,The Show,1
+Saturday,000000,imposter,The Imposter,1
+Saturday,060000,satmorningospel,Sat Morning Gospel,1
+Saturday,080000,breakfadish,The Breakfast Dish,1
+Saturday,100000,grandmajazz,Grandma's Jazz,1
+Saturday,160000,starchild,Starchild & Rose Marie,1
+Saturday,180000,ironmike,The Iron Mike Show,1
+Saturday,200000,unintelligible,Unintelligible,1
+Saturday,220000,homeunderdo,Home of the Underdogs,0
+Saturday,220000,westernlands,The Western Lands,1

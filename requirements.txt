@@ -1,0 +1,38 @@
+# WDBX Radio Toolbox — Python dependencies
+# After first install, pin exact versions with: pip freeze > requirements.txt
+
+# Web framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+jinja2>=3.1.4
+python-multipart>=0.0.9
+aiofiles>=23.2.1
+
+# Database
+sqlmodel>=0.0.19
+
+# HTTP / scraping
+requests>=2.32.3
+beautifulsoup4>=4.12.3
+lxml>=5.2.2
+
+# Audio processing
+pydub>=0.25.1
+librosa>=0.10.2
+
+# Audio fingerprinting (requires fpcalc system binary from chromaprint)
+pyacoustid>=1.3.0
+
+# Speech / voice activity detection (CPU-compatible)
+silero-vad>=5.1
+torch>=2.3.0          # silero-vad dependency; CPU-only install acceptable
+
+# Background task scheduling
+apscheduler>=3.10.4
+
+# Config
+pyyaml>=6.0.1
+
+# Dev / testing
+pytest>=8.2.0
+httpx>=0.27.0          # for FastAPI TestClient

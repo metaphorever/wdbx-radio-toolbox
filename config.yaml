@@ -1,0 +1,55 @@
+# WDBX Radio Toolbox — Configuration
+# All paths must be absolute. No hardcoded paths in code.
+
+pacifica:
+  archive_base_url: "https://archive.wdbx.org/mp3/"
+  station_prefix: "wdbx"
+  # URL pattern: {archive_base_url}{station_prefix}_{YYMMDD}_{HHMMSS}{slug}.mp3
+  # Confirmed example: https://archive.wdbx.org/mp3/wdbx_260205_070000islandreport.mp3
+  # Note: no underscore between time component and slug
+  scrape_interval_hours: 6
+  download_delay_hours: 24  # download ~24h after air time
+
+nas:
+  mount_point: "/mnt/wdbx-share"
+  archive_path: "/mnt/wdbx-share/Shows/AutoArchive"
+  # Folder structure: {archive_path}/{year}/{show-slug}/{YYMMDD}_{HHMMSS}_{showname}.mp3
+  overnight_output_path: "/mnt/wdbx-share/overnight-programming"
+
+local_staging:
+  path: "/home/wdbx/Desktop/Download-Folder"
+  # Used as failsafe when NAS is unreachable
+
+database:
+  path: "/home/wdbx/wdbx-toolbox/wdbx.db"
+
+logging:
+  level: "INFO"
+  file: "/home/wdbx/wdbx-toolbox/logs/wdbx.log"
+  max_bytes: 10485760   # 10 MB
+  backup_count: 5
+
+smtp:
+  host: ""              # e.g. smtp.gmail.com
+  port: 587
+  user: ""
+  password: ""
+  from_addr: ""
+  to_addr: ""           # station manager email
+
+processing:
+  overlap_strip_seconds: 7          # raw recordings have ~7 sec overlap at boundaries
+  target_runtime_seconds: 7200      # default 2:00:00; overridden per show
+  eas_freq_1_hz: 1050               # EAS detection frequencies
+  eas_freq_2_hz: 853
+  min_segment_duration_sec: 120     # sub-2-min recurring segments require human classification
+
+web:
+  host: "0.0.0.0"
+  port: 8000
+
+# Per-show overrides — managed via onboarding wizard, stored in DB
+# Listed here for reference only. Source of truth is the shows table.
+known_duration_overrides:
+  timecapsul: 180     # The Time Capsule — legitimately 3 hours
+  # Friday 4-hour block: confirm show name with operator

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Database (never commit the live DB)
+*.db
+*.db-shm
+*.db-wal
+
+# Config with credentials (commit config.yaml as template only)
+config.local.yaml
+
+# Logs
+logs/
+*.log
+
+# Audio files (never commit media to git)
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+fragments/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
