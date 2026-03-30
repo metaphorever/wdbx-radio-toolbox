@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archive Manager — WDBX</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  {# ── Header ── #}
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← Home</a>
+      <h1 class="text-xl font-bold tracking-wide">Archive Manager</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      {% if nas_ok %}
+        <span class="flex items-center gap-1.5 text-xs text-green-400">
+          <span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span> NAS connected
+        </span>
+      {% else %}
+        <span class="flex items-center gap-1.5 text-xs text-red-400 font-semibold">
+          <span class="w-2 h-2 rounded-full bg-red-500 inline-block animate-pulse"></span> NAS unreachable
+        </span>
+      {% endif %}
+    </div>
+  </header>
+
+  {# ── NAS down banner ── #}
+  {% if not nas_ok %}
+  <div class="bg-red-950 border-b border-red-800 px-6 py-3 text-sm text-red-300">
+    <strong class="text-red-200">NAS unreachable.</strong>
+    Downloads are routing to local staging. Use "Copy to NAS" on each episode once the drive is back online.
+  </div>
+  {% endif %}
+
+  {# ── System events ── #}
+  {% if events %}
+  <div class="px-6 py-4 space-y-2">
+    {% for event in events %}
+    <div class="flex items-start justify-between gap-4 rounded border px-4 py-3
+      {% if event.severity == 'error' or event.severity == 'critical' %}border-red-800 bg-red-950 text-red-300
+      {% elif event.severity == 'warning' %}border-yellow-800 bg-yellow-950 text-yellow-300
+      {% else %}border-gray-700 bg-gray-900 text-gray-300{% endif %}">
+      <span class="text-sm">
+        <span class="font-semibold uppercase text-xs mr-2 opacity-60">{{ event.severity }}</span>
+        {{ event.message }}
+        <span class="ml-2 text-xs opacity-50">{{ event.created_at.strftime('%m/%d %H:%M') }}</span>
+      </span>
+      <form action="/archive/events/{{ event.id }}/resolve" method="post" class="shrink-0">
+        <button class="text-xs text-gray-500 hover:text-gray-300 border border-gray-700 px-2 py-0.5 rounded">
+          Dismiss
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <main class="max-w-6xl mx-auto px-6 py-8 space-y-10">
+
+    {# ── Stats + Actions ── #}
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex gap-6 text-sm text-gray-400">
+        <span><span class="text-white font-semibold">{{ stats.enabled }}</span> / {{ stats.total_shows }} shows enabled</span>
+        <span class="text-yellow-400"><span class="font-semibold">{{ stats.pending }}</span> pending</span>
+        <span class="text-green-400"><span class="font-semibold">{{ stats.downloaded }}</span> downloaded</span>
+        {% if stats.failed > 0 %}
+        <span class="text-red-400"><span class="font-semibold">{{ stats.failed }}</span> failed</span>
+        {% endif %}
+      </div>
+      <div class="flex gap-3">
+        <form action="/archive/seed" method="post">
+          <button class="text-sm px-4 py-2 rounded border border-gray-600 hover:border-gray-400 transition">
+            Import showst.txt
+          </button>
+        </form>
+        <form action="/archive/scrape" method="post">
+          <button class="text-sm px-4 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold">
+            Scrape Archive Now
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {# ── Schedule Grid ── #}
+    <section x-data="{ openDay: '{{ day_order[0] }}' }">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-4">Schedule</h2>
+
+      {# Day tabs #}
+      <div class="flex flex-wrap gap-2 mb-4">
+        {% for day in day_order %}
+        {% if by_day[day] %}
+        <button
+          @click="openDay = '{{ day }}'"
+          :class="openDay === '{{ day }}' ? 'bg-indigo-700 text-white border-indigo-600' : 'text-gray-400 border-gray-700 hover:border-gray-500'"
+          class="text-xs px-3 py-1 rounded border transition">
+          {{ day[:3] }}
+          <span class="ml-1 opacity-60">{{ by_day[day]|length }}</span>
+        </button>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      {# Day panels #}
+      {% for day in day_order %}
+      {% if by_day[day] %}
+      <div x-show="openDay === '{{ day }}'" x-cloak>
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="text-left text-xs text-gray-500 border-b border-gray-800">
+              <th class="pb-2 pr-4 font-normal">Time</th>
+              <th class="pb-2 pr-4 font-normal">Show</th>
+              <th class="pb-2 pr-4 font-normal">Key</th>
+              <th class="pb-2 pr-4 font-normal">Duration</th>
+              <th class="pb-2 font-normal">Archive</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for show in by_day[day] %}
+            <tr class="border-b border-gray-900 hover:bg-gray-900/40 transition">
+              <td class="py-2 pr-4 text-gray-400 tabular-nums">
+                {% if show.schedule_time %}
+                  {{ show.schedule_time[:2] }}:{{ show.schedule_time[2:4] }}
+                {% endif %}
+              </td>
+              <td class="py-2 pr-4">
+                {{ show.display_name }}
+                {% if not show.confirmed_by_manager %}
+                  <span class="ml-1 text-xs text-yellow-600" title="Not confirmed by manager">*</span>
+                {% endif %}
+              </td>
+              <td class="py-2 pr-4 text-gray-500 text-xs">{{ show.show_key }}</td>
+              <td class="py-2 pr-4 text-gray-400 text-xs">{{ show.expected_duration_min }}m</td>
+              <td class="py-2">
+                <form action="/archive/shows/{{ show.show_key }}/toggle" method="post">
+                  <button class="text-xs px-3 py-1 rounded transition
+                    {% if show.archive_enabled %}bg-green-900 text-green-300 border border-green-800 hover:bg-green-800
+                    {% else %}bg-gray-800 text-gray-500 border border-gray-700 hover:border-gray-500{% endif %}">
+                    {{ "ON" if show.archive_enabled else "OFF" }}
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      {% if ungrouped %}
+      <div x-show="openDay === 'ungrouped'" x-cloak>
+        <p class="text-xs text-gray-500">These shows have no schedule day set (import showst.txt to fix).</p>
+        <ul class="mt-2 space-y-1">
+          {% for show in ungrouped %}
+          <li class="text-sm text-gray-400">{{ show.display_name }} <span class="text-gray-600">{{ show.show_key }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </section>
+
+    {# ── Recent Episodes ── #}
+    <section>
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-4">Recent Episodes</h2>
+
+      {% if not recent_episodes %}
+        <p class="text-sm text-gray-600">No episodes yet. Run a scrape to discover files.</p>
+      {% else %}
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="text-left text-xs text-gray-500 border-b border-gray-800">
+            <th class="pb-2 pr-4 font-normal">Show</th>
+            <th class="pb-2 pr-4 font-normal">Air Date</th>
+            <th class="pb-2 pr-4 font-normal">Status</th>
+            <th class="pb-2 pr-4 font-normal">Fragments</th>
+            <th class="pb-2 font-normal">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ep in recent_episodes %}
+          <tr class="border-b border-gray-900 hover:bg-gray-900/40 transition">
+            <td class="py-2 pr-4">{{ show_names.get(ep.show_key, ep.show_key) }}</td>
+            <td class="py-2 pr-4 text-gray-400 tabular-nums text-xs">
+              {{ ep.air_datetime.strftime('%Y-%m-%d %H:%M') }}
+            </td>
+            <td class="py-2 pr-4">
+              <span class="text-xs px-2 py-0.5 rounded
+                {% if ep.status == 'downloaded' %}bg-green-900 text-green-300
+                {% elif ep.status == 'downloading' %}bg-blue-900 text-blue-300
+                {% elif ep.status == 'failed' %}bg-red-900 text-red-300
+                {% elif ep.status == 'pending' %}bg-gray-800 text-gray-400
+                {% else %}bg-gray-800 text-gray-400{% endif %}">
+                {{ ep.status }}
+              </span>
+            </td>
+            <td class="py-2 pr-4 text-xs text-gray-500">
+              {% if ep.is_fragmented %}
+                <span class="text-yellow-500" title="Assembled from restart fragments">⚡ {{ ep.fragment_count }}</span>
+              {% else %}
+                1
+              {% endif %}
+            </td>
+            <td class="py-2">
+              <div class="flex gap-2">
+                {% if ep.status == 'failed' %}
+                <form action="/archive/episodes/{{ ep.id }}/retry" method="post">
+                  <button class="text-xs px-2 py-0.5 rounded border border-gray-700 hover:border-gray-500 text-gray-400">
+                    Retry
+                  </button>
+                </form>
+                {% endif %}
+                {% if ep.local_path and not ep.nas_path %}
+                <form action="/archive/episodes/{{ ep.id }}/copy-to-nas" method="post">
+                  <button class="text-xs px-2 py-0.5 rounded border border-indigo-800 hover:border-indigo-600 text-indigo-400">
+                    Copy to NAS
+                  </button>
+                </form>
+                {% endif %}
+                {% if ep.nas_path %}
+                <span class="text-xs text-green-600" title="{{ ep.nas_path }}">✓ NAS</span>
+                {% elif ep.local_path %}
+                <span class="text-xs text-yellow-600" title="{{ ep.local_path }}">local</span>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </section>
+
+  </main>
+
+</body>
+</html>

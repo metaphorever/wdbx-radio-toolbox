@@ -6,7 +6,9 @@ _engine = None
 def get_engine():
     global _engine
     if _engine is None:
-        db_path = get("database.path", "wdbx.db")
+        from pathlib import Path
+        db_path = Path(get("database.path", "wdbx.db"))
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         _engine = create_engine(f"sqlite:///{db_path}", echo=False)
     return _engine
 

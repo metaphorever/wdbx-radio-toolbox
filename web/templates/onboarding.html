@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Wizard — WDBX</title>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← Home</a>
+      <h1 class="text-xl font-bold tracking-wide">Show Configuration</h1>
+    </div>
+    <div class="flex items-center gap-4">
+      <span class="text-sm text-gray-400">
+        <span class="{% if confirmed == total %}text-green-400{% else %}text-yellow-400{% endif %} font-semibold">
+          {{ confirmed }}
+        </span>
+        <span class="text-gray-600">/ {{ total }} confirmed</span>
+      </span>
+      {% if confirmed < total %}
+      <form action="/onboarding/confirm-all" method="post">
+        <button class="text-xs px-3 py-1.5 rounded border border-gray-600 hover:border-gray-400 transition">
+          Mark All Confirmed
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if confirmed == total and total > 0 %}
+  <div class="bg-green-950 border-b border-green-800 px-6 py-3 text-sm text-green-300">
+    All shows confirmed. <a href="/archive" class="underline hover:text-green-100">Go to Archive Manager →</a>
+  </div>
+  {% elif confirmed == 0 %}
+  <div class="bg-indigo-950 border-b border-indigo-800 px-6 py-3 text-sm text-indigo-300">
+    Review each show below. New shows default to <strong>ON</strong> — turn off anything that should never be archived.
+    Set durations for any shows that run longer than their scheduled slot.
+    Hit <strong>Save Changes</strong> when done.
+  </div>
+  {% endif %}
+
+  <form action="/onboarding/save" method="post">
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-10">
+
+    {% for day in day_order %}
+    {% if by_day[day] %}
+    <section x-data="{ open: true }">
+
+      <button type="button" @click="open = !open"
+        class="flex items-center gap-3 w-full text-left mb-3 group">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-400 group-hover:text-gray-200 transition">
+          {{ day }}
+        </h2>
+        <span class="text-xs text-gray-600">{{ by_day[day]|length }} shows</span>
+        <span class="text-gray-600 text-xs ml-auto" x-text="open ? '▲' : '▼'"></span>
+      </button>
+
+      <div x-show="open" x-cloak>
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="text-left text-xs text-gray-600 border-b border-gray-800">
+              <th class="pb-2 pr-3 font-normal w-8">On</th>
+              <th class="pb-2 pr-4 font-normal">Show</th>
+              <th class="pb-2 pr-3 font-normal w-16">Time</th>
+              <th class="pb-2 pr-3 font-normal w-24">Duration (min)</th>
+              <th class="pb-2 pr-3 font-normal">Notes</th>
+              <th class="pb-2 font-normal w-20 text-center">Confirmed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for show in by_day[day] %}
+            <tr class="border-b border-gray-900 {% if show.confirmed_by_manager %}opacity-60{% endif %}">
+
+              {# Archive enabled toggle #}
+              <td class="py-2 pr-3">
+                <input type="checkbox" name="enabled_{{ show.show_key }}"
+                  {% if show.archive_enabled %}checked{% endif %}
+                  class="w-4 h-4 accent-indigo-500 cursor-pointer">
+              </td>
+
+              {# Show name + key #}
+              <td class="py-2 pr-4">
+                <div class="font-medium">{{ show.display_name }}</div>
+                <div class="text-xs text-gray-600">{{ show.show_key }}</div>
+              </td>
+
+              {# Scheduled time #}
+              <td class="py-2 pr-3 text-gray-400 tabular-nums text-xs">
+                {% if show.schedule_time %}
+                  {{ show.schedule_time[:2] }}:{{ show.schedule_time[2:4] }}
+                {% endif %}
+              </td>
+
+              {# Duration (editable) #}
+              <td class="py-2 pr-3">
+                <input type="number" name="duration_{{ show.show_key }}"
+                  value="{{ show.expected_duration_min }}" min="1" max="480"
+                  class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm
+                         focus:border-indigo-500 focus:outline-none tabular-nums">
+              </td>
+
+              {# Notes #}
+              <td class="py-2 pr-3">
+                <input type="text" name="notes_{{ show.show_key }}"
+                  value="{{ show.notes or '' }}"
+                  placeholder="optional note"
+                  class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm
+                         focus:border-indigo-500 focus:outline-none text-gray-300 placeholder-gray-700">
+              </td>
+
+              {# Confirmed #}
+              <td class="py-2 text-center">
+                <input type="checkbox" name="confirmed_{{ show.show_key }}"
+                  {% if show.confirmed_by_manager %}checked{% endif %}
+                  class="w-4 h-4 accent-green-500 cursor-pointer">
+              </td>
+
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {# Unscheduled shows (no day set — need seed first) #}
+    {% if unscheduled %}
+    <section>
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-600 mb-3">
+        Unscheduled <span class="text-xs font-normal">(run Import showst.txt in Archive Manager to assign days)</span>
+      </h2>
+      <table class="w-full text-sm border-collapse">
+        <tbody>
+          {% for show in unscheduled %}
+          <tr class="border-b border-gray-900">
+            <td class="py-2 pr-3 w-8">
+              <input type="checkbox" name="enabled_{{ show.show_key }}"
+                {% if show.archive_enabled %}checked{% endif %}
+                class="w-4 h-4 accent-indigo-500">
+            </td>
+            <td class="py-2 pr-4">
+              <div>{{ show.display_name }}</div>
+              <div class="text-xs text-gray-600">{{ show.show_key }}</div>
+            </td>
+            <td class="py-2 pr-3">
+              <input type="number" name="duration_{{ show.show_key }}"
+                value="{{ show.expected_duration_min }}" min="1" max="480"
+                class="w-20 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none">
+            </td>
+            <td class="py-2 pr-3">
+              <input type="text" name="notes_{{ show.show_key }}"
+                value="{{ show.notes or '' }}" placeholder="optional note"
+                class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none text-gray-300 placeholder-gray-700">
+            </td>
+            <td class="py-2 text-center w-20">
+              <input type="checkbox" name="confirmed_{{ show.show_key }}"
+                {% if show.confirmed_by_manager %}checked{% endif %}
+                class="w-4 h-4 accent-green-500">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
+    {% if total == 0 %}
+    <div class="text-center py-16 text-gray-600">
+      <p class="mb-4">No shows yet.</p>
+      <a href="/archive" class="text-indigo-400 hover:text-indigo-300 underline">
+        Go to Archive Manager → Import showst.txt first
+      </a>
+    </div>
+    {% endif %}
+
+  </main>
+
+  {# Sticky save bar #}
+  {% if total > 0 %}
+  <div class="sticky bottom-0 border-t border-gray-800 bg-gray-950/95 backdrop-blur px-6 py-4 flex items-center justify-between">
+    <span class="text-xs text-gray-500">
+      Changes apply immediately. Downloads run regardless of confirmation status.
+    </span>
+    <button type="submit"
+      class="px-6 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+      Save Changes
+    </button>
+  </div>
+  {% endif %}
+
+  </form>
+
+</body>
+</html>

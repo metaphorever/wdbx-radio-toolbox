@@ -1,0 +1,245 @@
+WDBX RADIO TOOLBOX — SETUP & OPERATIONS GUIDE
+==============================================
+Last updated: 2026-03-23
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1 — FIRST-TIME DEPLOY (UBUNTU)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. COPY FILES TO THE SERVER
+   The safest method is rsync, which skips Mac-only files automatically:
+
+     rsync -av \
+       --exclude='*.db' --exclude='*.db-shm' --exclude='*.db-wal' \
+       --exclude='config.local.yaml' \
+       --exclude='logs/' --exclude='staging/' --exclude='nas-sim/' \
+       --exclude='__pycache__/' --exclude='.claude/' --exclude='.DS_Store' \
+       "/Volumes/Mac Mini Dock/Python Tools/WDBX/" \
+       wdbx@<UBUNTU-IP>:/home/wdbx/wdbx-toolbox/
+
+   Or if you just want to drag-and-drop the folder via a file manager,
+   it will work too — just delete config.local.yaml and any .db files
+   from the copy afterward. Do NOT copy those to the server.
+
+   DO NOT COPY: config.local.yaml, *.db, logs/, staging/, nas-sim/
+   COPY EVERYTHING ELSE including: config.yaml, all .py files,
+                                   requirements.txt, wdbx-toolbox.service,
+                                   reference/, docs/, web/, shared/, etc.
+
+
+2. INSTALL SYSTEM DEPENDENCIES (Ubuntu)
+
+     sudo apt update
+     sudo apt install python3 python3-pip ffmpeg
+
+
+3. INSTALL PYTHON DEPENDENCIES
+
+     cd /home/wdbx/wdbx-toolbox
+     pip3 install -r requirements.txt
+
+
+4. CONFIGURE PATHS
+   Open the web UI after starting the server (Step 6) and go to:
+
+     http://<SERVER-IP>:8000/settings
+
+   Set your NAS mount point, archive path, and local staging path there.
+   Changes are saved to config.local.yaml on the server automatically.
+
+   Alternatively, edit config.yaml directly:
+   - nas.mount_point        — where the NAS is mounted (e.g. /mnt/wdbx-share)
+   - nas.archive_path       — where shows are saved on the NAS
+   - nas.overnight_output_path — where processed overnight files go
+   - local_staging.path     — fallback folder when NAS is unreachable
+
+   The paths in config.yaml are already set for the Ubuntu box.
+   Only change them if your actual folder structure differs.
+
+
+5. CONFIGURE EMAIL ALERTS (optional but recommended)
+   Edit config.yaml and fill in the smtp section:
+
+     smtp:
+       host: "smtp.gmail.com"      # or your provider
+       port: 587
+       user: "your@email.com"
+       password: "your-app-password"
+       from_addr: "your@email.com"
+       to_addr: "manager@wdbx.org"
+
+   For Gmail, use an App Password (not your main password).
+   Leave host blank to disable email alerts entirely.
+
+
+6. INSTALL AND START THE SYSTEMD SERVICE
+
+     sudo cp /home/wdbx/wdbx-toolbox/wdbx-toolbox.service /etc/systemd/system/
+     sudo systemctl daemon-reload
+     sudo systemctl enable wdbx-toolbox
+     sudo systemctl start wdbx-toolbox
+
+   Check it came up:
+     sudo systemctl status wdbx-toolbox
+
+   View live logs:
+     journalctl -u wdbx-toolbox -f
+
+   The service restarts automatically after a crash (10 second delay,
+   up to 5 times per 2 minutes before giving up).
+
+
+7. FIRST-RUN WORKFLOW (do this once after the server is up)
+
+   a. Open http://<SERVER-IP>:8000 in a browser
+   b. Go to Archive Manager → click "Import showst.txt"
+      This seeds all ~70 shows from the reference schedule file.
+   c. Go to Show Configuration (Onboarding)
+      Review the show list. New shows default to ON.
+      Turn OFF anything that should never be archived.
+      Fix durations for shows that run longer than their slot
+      (The Time Capsule is already set to 180 min).
+      Click Save Changes.
+   d. Back in Archive Manager → click "Scrape Archive Now"
+      This fetches the live archive listing and queues all available
+      episodes for download. Downloads begin automatically ~24 hours
+      after air time (so episodes aired in the last 24h will queue
+      but not download yet — this is intentional).
+   e. The scheduler runs automatically from here:
+      - Scrapes the archive every 6 hours
+      - Checks for downloadable episodes every hour
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 2 — NAS SETUP (Iomega StorCenter px6-300d)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The NAS needs to be mounted before the toolbox can save to it.
+Until it's mounted, downloads route to the local staging folder
+and show a red banner in the web UI.
+
+OPTION A — Manual mount (test first)
+  sudo mount -t cifs //192.168.2.185/"Add to Share" /mnt/wdbx-share \
+    -o username=<NAS-USER>,password=<NAS-PASS>,uid=wdbx,gid=wdbx
+
+OPTION B — Persistent automount via /etc/fstab (recommended)
+  1. Install cifs-utils:
+       sudo apt install cifs-utils
+  2. Create credentials file (keep it private):
+       sudo nano /etc/samba/wdbx-nas.creds
+       Add two lines:
+         username=<NAS-USER>
+         password=<NAS-PASS>
+       sudo chmod 600 /etc/samba/wdbx-nas.creds
+  3. Create mount point:
+       sudo mkdir -p /mnt/wdbx-share
+  4. Add to /etc/fstab:
+       //192.168.2.185/Add to Share  /mnt/wdbx-share  cifs  credentials=/etc/samba/wdbx-nas.creds,uid=wdbx,gid=wdbx,iocharset=utf8,_netdev,nofail  0  0
+  5. Test:
+       sudo mount -a
+       ls /mnt/wdbx-share
+
+  The _netdev flag tells the system to wait for network before mounting.
+  The nofail flag means a boot still succeeds if the NAS is offline.
+
+After mounting, go to Archive Manager in the web UI.
+The red "NAS unreachable" banner should disappear.
+Use "Copy to NAS" on any episodes that downloaded to local staging.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 3 — DAY-TO-DAY OPERATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ACCESS THE WEB UI
+  From any browser on the LAN: http://<SERVER-IP>:8000
+  Server IP is whatever the Ubuntu streaming PC's local IP is.
+  Ask IT or check: hostname -I (run on the Ubuntu box)
+
+ADDING OR DISABLING A SHOW
+  Go to Show Configuration (/onboarding) or Archive Manager (/archive).
+  Toggle the show ON or OFF. Takes effect immediately.
+
+A SHOW IS MISSING FROM THE LIST
+  It may be a new show not in the original schedule file.
+  Go to Archive Manager → Scrape Archive Now.
+  If the show appears in the archive listing, the scraper will create
+  a record for it (defaulting to ON). It will then appear in
+  Show Configuration for you to review.
+
+EPISODE FAILED TO DOWNLOAD
+  Go to Archive Manager. Find the episode in the Recent Episodes list.
+  Click "Retry" — it will re-queue for the next hourly download run.
+  If it keeps failing, check the system events panel for error details.
+
+NAS WENT OFFLINE
+  Downloads automatically route to local staging (no action needed).
+  When the NAS comes back online, the red banner disappears.
+  Click "Copy to NAS" on each episode in the local staging queue.
+
+RESTARTING THE SERVICE
+  sudo systemctl restart wdbx-toolbox
+
+STOPPING THE SERVICE
+  sudo systemctl stop wdbx-toolbox
+
+VIEWING LOGS
+  journalctl -u wdbx-toolbox -f          (live, follow mode)
+  journalctl -u wdbx-toolbox --since today
+  journalctl -u wdbx-toolbox -n 100      (last 100 lines)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 4 — LOCAL DEVELOPMENT (Mac)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Start with hot-reload:
+  WDBX_DEV=1 python3 run.py
+
+Start without reload (more stable on Python 3.14):
+  python3 run.py
+
+The Mac uses config.local.yaml for local paths (db, logs, staging).
+Never copy config.local.yaml to the Ubuntu server.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 5 — FILE STRUCTURE (what goes where)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ON THE NAS (after mounting at /mnt/wdbx-share):
+  Shows/AutoArchive/{year}/{show-slug}/          ← downloaded archives
+    e.g. Shows/AutoArchive/2026/islandreport/
+  Shows/AutoArchive/{year}/{show-slug}/fragments/ ← original restart fragments
+  overnight-programming/                          ← processed output files (Phase 7)
+
+ON THE UBUNTU BOX:
+  /home/wdbx/wdbx-toolbox/       ← application code
+  /home/wdbx/wdbx-toolbox/wdbx.db ← SQLite database (auto-created)
+  /home/wdbx/wdbx-toolbox/logs/  ← log files (auto-created)
+  /home/wdbx/Desktop/Download-Folder/ ← local staging (NAS failsafe)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 6 — KNOWN ISSUES & NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Downloads are delayed 24 hours after air time by design. This gives
+  Pacifica's servers time to finish processing the recording.
+
+- Restart fragments (stream glitches mid-show) are automatically detected
+  and reassembled with ffmpeg. These appear with a ⚡ icon in the UI.
+
+- Show durations in Show Configuration default to 120 minutes.
+  Correct any shows that run a different length — this affects quality
+  flagging in later processing phases.
+
+- The Time Capsule (timecapsul) is already set to 180 minutes.
+
+- Shows with flag=0 in the original showst.txt are imported as disabled.
+  Shows not in showst.txt at all default to enabled (ON) when discovered.
+
+- config.yaml is the master config and IS committed to git.
+  config.local.yaml is for local overrides and is NOT committed to git.
+  Credentials (SMTP passwords) go in config.local.yaml only.

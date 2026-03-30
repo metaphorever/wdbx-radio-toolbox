@@ -17,6 +17,8 @@ class Show(SQLModel, table=True):
     expected_duration_override: Optional[int] = None   # minutes; overrides scheduled slot
     retention_days: Optional[int] = None
     confirmed_by_manager: bool = False
+    schedule_day: Optional[str] = None    # e.g. "Monday" — from showst.txt / onboarding wizard
+    schedule_time: Optional[str] = None   # HHMMSS — scheduled air time
     notes: Optional[str] = None
 
 
