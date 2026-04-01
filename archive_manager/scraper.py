@@ -1,168 +1,90 @@
 """
-Archive listing scraper for archive.wdbx.org.
+Archive scraper using the Confessor archive API.
 
-PRIMARY data source per dev plan rule #1.
-Fetches the Pacifica MP3 directory listing and discovers all WDBX files,
-including restart fragments (multiple files for the same show+date).
-URL construction in url.py is fallback only — this module is authoritative.
+Replaces the old HTML directory listing approach. Calls:
+  https://archive.wdbx.org/_sh_do_api.php?req={show_key}&num={n}&json=1
+
+for each enabled show to get direct MP3 URLs, air timestamps, and expiry info.
 """
 import json
 import logging
-import re
-from collections import defaultdict
-from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from sqlmodel import Session, select
 
-from shared.config import get
 from shared.models import Episode, Show
 
 logger = logging.getLogger(__name__)
 
-# Confirmed pattern (Q3 resolved 2026-03-23): wdbx_{YYMMDD}_{HHMMSS}{slug}.mp3
-# No underscore between time component and slug.
-FILENAME_RE = re.compile(r"^wdbx_(\d{6})_(\d{6})([a-z0-9]+)\.mp3$", re.IGNORECASE)
+ARCHIVE_API = "https://archive.wdbx.org/_sh_do_api.php"
+EPISODES_PER_SHOW = 20
 
 
-@dataclass
-class ArchiveFile:
-    filename: str
-    date_str: str       # YYMMDD
-    time_str: str       # HHMMSS
-    slug: str
-    air_datetime: datetime
-    url: str
-
-
-def parse_archive_listing(html: str, base_url: str) -> list[ArchiveFile]:
-    """
-    Extract all WDBX MP3 entries from a directory listing HTML page.
-    Handles Apache-style listings (href="filename.mp3" or href="/mp3/filename.mp3").
-    """
-    files: list[ArchiveFile] = []
-    # Match href values that end in a wdbx .mp3 filename
-    for filename in re.findall(
-        r'href="(?:[^"]*/)?(wdbx_[^"]+\.mp3)"', html, re.IGNORECASE
-    ):
-        m = FILENAME_RE.match(filename)
-        if not m:
-            logger.debug("Skipping unrecognized filename: %s", filename)
-            continue
-
-        date_str, time_str, slug = m.group(1), m.group(2), m.group(3)
-        try:
-            air_dt = datetime.strptime(f"{date_str}_{time_str}", "%y%m%d_%H%M%S")
-        except ValueError:
-            logger.warning("Could not parse datetime from filename: %s", filename)
-            continue
-
-        files.append(
-            ArchiveFile(
-                filename=filename,
-                date_str=date_str,
-                time_str=time_str,
-                slug=slug,
-                air_datetime=air_dt,
-                url=base_url.rstrip("/") + "/" + filename,
-            )
-        )
-
-    return files
-
-
-def fetch_archive_listing() -> list[ArchiveFile]:
-    """Fetch the Pacifica archive directory and return all parseable WDBX files."""
-    base_url = get("pacifica.archive_base_url", "https://archive.wdbx.org/mp3/")
-    logger.info("Fetching archive listing from %s", base_url)
-    resp = requests.get(base_url, timeout=30)
+def fetch_show_episodes(show_key: str) -> list[dict]:
+    """Fetch recent episodes for one show from the Confessor archive API."""
+    url = f"{ARCHIVE_API}?req={show_key}&num={EPISODES_PER_SHOW}&json=1"
+    resp = requests.get(url, timeout=30)
     resp.raise_for_status()
-    files = parse_archive_listing(resp.text, base_url)
-    logger.info("Parsed %d WDBX MP3 files from archive listing", len(files))
-    return files
+    data = resp.json()
+    if not isinstance(data, list):
+        logger.warning("Unexpected API response for %s: %s", show_key, type(data))
+        return []
+    return data
 
 
 def sync_episodes(session: Session) -> dict[str, int]:
     """
-    Fetch the archive listing and create or update Episode records.
+    Fetch recent episodes for all enabled shows and create Episode records
+    for any not already in the DB.
 
-    - Groups files by (slug, date_str) to detect fragments.
-    - Creates new Episode for each unseen group.
-    - Updates fragment_count on existing pending episodes if new fragments appear.
-    - Skips shows with archive_enabled=False.
-
-    Returns counts dict: {created, updated, skipped, no_show}.
+    Returns counts dict: {created, skipped, failed}.
     """
-    files = fetch_archive_listing()
+    shows = session.exec(select(Show).where(Show.archive_enabled == True)).all()
+    counts: dict[str, int] = {"created": 0, "skipped": 0, "failed": 0}
 
-    # Build slug → Show lookup
-    shows = {s.show_key: s for s in session.exec(select(Show)).all()}
-
-    counts: dict[str, int] = {"created": 0, "updated": 0, "skipped": 0, "no_show": 0}
-
-    # Group by (slug, date_str) — each group is one logical episode (or its fragments)
-    groups: dict[tuple[str, str], list[ArchiveFile]] = defaultdict(list)
-    for f in files:
-        groups[(f.slug, f.date_str)].append(f)
-
-    for (slug, date_str), group_files in groups.items():
-        show = shows.get(slug)
-        if show is None:
-            logger.debug("No show record for slug '%s' — skipping", slug)
-            counts["no_show"] += 1
+    for show in shows:
+        try:
+            entries = fetch_show_episodes(show.show_key)
+        except Exception as e:
+            logger.warning("Failed to fetch episodes for %s: %s", show.show_key, e)
+            counts["failed"] += 1
             continue
 
-        if not show.archive_enabled:
-            counts["skipped"] += 1
-            continue
+        for entry in entries:
+            mp3_url = entry.get("mp3")
+            def_time = entry.get("def_time")
 
-        # Sort fragments chronologically; earliest = canonical scheduled start
-        group_files.sort(key=lambda f: f.air_datetime)
-        canonical_dt = group_files[0].air_datetime
-        is_fragmented = len(group_files) > 1
-        source_urls = json.dumps([f.url for f in group_files])
+            if not mp3_url or not def_time:
+                logger.debug("Skipping entry with missing mp3/def_time: %s", entry)
+                continue
 
-        existing = session.exec(
-            select(Episode).where(
-                Episode.show_key == slug,
-                Episode.air_datetime == canonical_dt,
-            )
-        ).first()
+            # Convert Unix timestamp to naive UTC datetime (consistent with rest of codebase)
+            air_dt = datetime.fromtimestamp(def_time, tz=timezone.utc).replace(tzinfo=None)
 
-        if existing:
-            # Update fragment info if we've discovered more fragments since last scrape
-            if existing.status == "pending" and existing.fragment_count < len(group_files):
-                existing.source_urls = source_urls
-                existing.fragment_count = len(group_files)
-                existing.is_fragmented = True
-                session.add(existing)
-                counts["updated"] += 1
-                logger.info(
-                    "Updated fragment count: %s %s → %d parts",
-                    slug, date_str, len(group_files),
+            existing = session.exec(
+                select(Episode).where(
+                    Episode.show_key == show.show_key,
+                    Episode.air_datetime == air_dt,
                 )
-            else:
+            ).first()
+
+            if existing:
                 counts["skipped"] += 1
-            continue
+                continue
 
-        episode = Episode(
-            show_key=slug,
-            air_datetime=canonical_dt,
-            scheduled_duration_min=show.expected_duration_min,
-            source_urls=source_urls,
-            status="pending",
-            fragment_count=len(group_files),
-            is_fragmented=is_fragmented,
-        )
-        session.add(episode)
-        counts["created"] += 1
-
-        if is_fragmented:
-            logger.info(
-                "Fragment episode discovered: %s %s (%d parts)",
-                slug, date_str, len(group_files),
+            episode = Episode(
+                show_key=show.show_key,
+                air_datetime=air_dt,
+                scheduled_duration_min=show.expected_duration_min,
+                source_urls=json.dumps([mp3_url]),
+                status="pending",
+                fragment_count=1,
+                is_fragmented=False,
             )
+            session.add(episode)
+            counts["created"] += 1
+            logger.info("Queued: %s %s", show.show_key, air_dt.strftime("%Y-%m-%d"))
 
     session.commit()
     logger.info("sync_episodes complete: %s", counts)
