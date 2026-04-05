@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 from archive_manager.downloader import download_episode
 from archive_manager.mailer import send_alert
 from archive_manager.nas import nas_is_writable
+from archive_manager.schedule_scraper import sync_new_shows
 from archive_manager.scraper import sync_episodes
 from shared.config import get
 from shared.database import get_engine
@@ -40,6 +41,20 @@ def _scrape_job() -> None:
     except Exception as e:
         logger.error("Scrape job failed: %s", e)
         send_alert("Archive scrape failed", str(e))
+
+
+def _schedule_sync_job() -> None:
+    """Check Confessor schedule page for new shows not yet in the DB."""
+    logger.info("Schedule sync job started")
+    try:
+        with Session(get_engine()) as session:
+            counts = sync_new_shows(session)
+        if counts["added"] > 0:
+            logger.info("Schedule sync: %d new show(s) discovered", counts["added"])
+        else:
+            logger.info("Schedule sync: no new shows")
+    except Exception as e:
+        logger.error("Schedule sync job failed: %s", e)
 
 
 def _download_job() -> None:
@@ -93,11 +108,13 @@ def get_scheduler() -> BackgroundScheduler:
     if _scheduler is None:
         _scheduler = BackgroundScheduler(daemon=True)
         scrape_interval = int(get("pacifica.scrape_interval_hours", 6))
+        schedule_sync_interval = int(get("confessor.schedule_sync_interval_hours", 24))
         _scheduler.add_job(_scrape_job, "interval", hours=scrape_interval, id="archive_scrape")
         _scheduler.add_job(_download_job, "interval", hours=1, id="archive_download")
+        _scheduler.add_job(_schedule_sync_job, "interval", hours=schedule_sync_interval, id="schedule_sync")
         logger.info(
-            "Scheduler configured: scrape every %dh, download check every 1h",
-            scrape_interval,
+            "Scheduler configured: scrape every %dh, download check every 1h, schedule sync every %dh",
+            scrape_interval, schedule_sync_interval,
         )
     return _scheduler
 

@@ -60,12 +60,20 @@
   </div>
   {% endif %}
 
-  <main class="max-w-6xl mx-auto px-6 py-8 space-y-10">
+  <main class="max-w-6xl mx-auto px-6 py-8 space-y-10" x-data="{ showGone: false, addShowOpen: false }">
 
     {# ── Stats + Actions ── #}
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex gap-6 text-sm text-gray-400">
         <span><span class="text-white font-semibold">{{ stats.enabled }}</span> / {{ stats.total_shows }} shows enabled</span>
+        {% if stats.gone > 0 %}
+        <span class="text-gray-600">
+          <span class="font-semibold">{{ stats.gone }}</span> gone
+          <button type="button" @click="showGone = !showGone"
+            class="ml-1 text-xs underline hover:text-gray-400 transition"
+            x-text="showGone ? '(hide)' : '(show)'"></button>
+        </span>
+        {% endif %}
         <span class="text-yellow-400"><span class="font-semibold">{{ stats.pending }}</span> pending</span>
         <span class="text-green-400"><span class="font-semibold">{{ stats.downloaded }}</span> downloaded</span>
         {% if stats.failed > 0 %}
@@ -73,6 +81,15 @@
         {% endif %}
       </div>
       <div class="flex gap-3">
+        <button type="button" @click="addShowOpen = !addShowOpen"
+          class="text-sm px-4 py-2 rounded border border-gray-600 hover:border-gray-400 transition">
+          + Add Show
+        </button>
+        <form action="/archive/sync-schedule" method="post">
+          <button class="text-sm px-4 py-2 rounded border border-gray-600 hover:border-gray-400 transition">
+            Sync Schedule
+          </button>
+        </form>
         <form action="/archive/seed" method="post">
           <button class="text-sm px-4 py-2 rounded border border-gray-600 hover:border-gray-400 transition">
             Import showst.txt
@@ -84,6 +101,59 @@
           </button>
         </form>
       </div>
+    </div>
+
+    {# ── Add Show Form ── #}
+    <div x-show="addShowOpen" x-cloak
+      class="rounded border border-gray-700 bg-gray-900 px-6 py-5">
+      <h3 class="text-sm font-semibold text-gray-300 mb-4">Add New Show</h3>
+      <form action="/archive/shows/add" method="post" class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div class="lg:col-span-2">
+          <label class="block text-xs text-gray-500 mb-1">Show Key (API slug)</label>
+          <input type="text" name="show_key" required placeholder="musicalkaleidoscope"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm
+                   focus:border-indigo-500 focus:outline-none placeholder-gray-700">
+        </div>
+        <div class="lg:col-span-2">
+          <label class="block text-xs text-gray-500 mb-1">Display Name</label>
+          <input type="text" name="display_name" required placeholder="Musical Kaleidoscope"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm
+                   focus:border-indigo-500 focus:outline-none placeholder-gray-700">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Day</label>
+          <select name="schedule_day"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm
+                   focus:border-indigo-500 focus:outline-none">
+            <option value="">—</option>
+            {% for day in day_order %}
+            <option value="{{ day }}">{{ day }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Time (HHMMSS)</label>
+          <input type="text" name="schedule_time" placeholder="130000" maxlength="6"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm
+                   focus:border-indigo-500 focus:outline-none placeholder-gray-700">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Duration (min)</label>
+          <input type="number" name="duration" value="120" min="1" max="480"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-1.5 text-sm
+                   focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div class="col-span-full flex gap-3 pt-1">
+          <button type="submit"
+            class="text-sm px-4 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold">
+            Add Show
+          </button>
+          <button type="button" @click="addShowOpen = false"
+            class="text-sm px-4 py-2 rounded border border-gray-700 hover:border-gray-500 text-gray-400 transition">
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
 
     {# ── Schedule Grid ── #}
@@ -116,31 +186,49 @@
               <th class="pb-2 pr-4 font-normal">Show</th>
               <th class="pb-2 pr-4 font-normal">Key</th>
               <th class="pb-2 pr-4 font-normal">Duration</th>
-              <th class="pb-2 font-normal">Archive</th>
+              <th class="pb-2 pr-4 font-normal">Archive</th>
+              <th class="pb-2 font-normal"></th>
             </tr>
           </thead>
           <tbody>
             {% for show in by_day[day] %}
-            <tr class="border-b border-gray-900 hover:bg-gray-900/40 transition">
+            <tr class="border-b border-gray-900 hover:bg-gray-900/40 transition"
+              {% if show.is_gone %}x-show="showGone" x-cloak{% endif %}>
               <td class="py-2 pr-4 text-gray-400 tabular-nums">
                 {% if show.schedule_time %}
                   {{ show.schedule_time[:2] }}:{{ show.schedule_time[2:4] }}
                 {% endif %}
               </td>
               <td class="py-2 pr-4">
-                {{ show.display_name }}
-                {% if not show.confirmed_by_manager %}
+                <span class="{% if show.is_gone %}line-through text-gray-600{% endif %}">
+                  {{ show.display_name }}
+                </span>
+                {% if show.is_gone %}
+                  <span class="ml-1 text-xs text-gray-700 border border-gray-800 rounded px-1">gone</span>
+                {% elif not show.confirmed_by_manager %}
                   <span class="ml-1 text-xs text-yellow-600" title="Not confirmed by manager">*</span>
                 {% endif %}
               </td>
               <td class="py-2 pr-4 text-gray-500 text-xs">{{ show.show_key }}</td>
               <td class="py-2 pr-4 text-gray-400 text-xs">{{ show.expected_duration_min }}m</td>
-              <td class="py-2">
+              <td class="py-2 pr-4">
+                {% if not show.is_gone %}
                 <form action="/archive/shows/{{ show.show_key }}/toggle" method="post">
                   <button class="text-xs px-3 py-1 rounded transition
                     {% if show.archive_enabled %}bg-green-900 text-green-300 border border-green-800 hover:bg-green-800
                     {% else %}bg-gray-800 text-gray-500 border border-gray-700 hover:border-gray-500{% endif %}">
                     {{ "ON" if show.archive_enabled else "OFF" }}
+                  </button>
+                </form>
+                {% endif %}
+              </td>
+              <td class="py-2">
+                <form action="/archive/shows/{{ show.show_key }}/toggle-gone" method="post">
+                  <button class="text-xs px-2 py-0.5 rounded border transition
+                    {% if show.is_gone %}border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300
+                    {% else %}border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500{% endif %}"
+                    title="{{ 'Unmark as gone' if show.is_gone else 'Mark as gone' }}">
+                    {{ "↩ Restore" if show.is_gone else "Gone" }}
                   </button>
                 </form>
               </td>
@@ -157,7 +245,9 @@
         <p class="text-xs text-gray-500">These shows have no schedule day set (import showst.txt to fix).</p>
         <ul class="mt-2 space-y-1">
           {% for show in ungrouped %}
-          <li class="text-sm text-gray-400">{{ show.display_name }} <span class="text-gray-600">{{ show.show_key }}</span></li>
+          <li class="text-sm text-gray-400{% if show.is_gone %} line-through text-gray-600{% endif %}">
+            {{ show.display_name }} <span class="text-gray-600">{{ show.show_key }}</span>
+          </li>
           {% endfor %}
         </ul>
       </div>

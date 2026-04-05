@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from archive_manager.downloader import copy_episode_to_nas
 from archive_manager.nas import nas_is_writable
+from archive_manager.schedule_scraper import sync_new_shows
 from archive_manager.scraper import sync_episodes
 from archive_manager.seeder import seed_from_file
 from shared.database import get_session
@@ -44,7 +45,7 @@ def archive_dashboard(request: Request, session: Session = Depends(get_session))
 
     shows_raw = session.exec(select(Show)).all()
 
-    # Group shows by day for the schedule grid
+    # Group shows by day for the schedule grid (active shows only by default)
     by_day: dict[str, list[Show]] = {d: [] for d in DAY_ORDER}
     ungrouped: list[Show] = []
     for show in shows_raw:
@@ -71,10 +72,13 @@ def archive_dashboard(request: Request, session: Session = Depends(get_session))
         .limit(10)
     ).all()
 
-    # Stats
+    active_shows = [s for s in shows_raw if not s.is_gone]
+    gone_count = sum(1 for s in shows_raw if s.is_gone)
+
     stats = {
-        "total_shows": len(shows_raw),
-        "enabled": sum(1 for s in shows_raw if s.archive_enabled),
+        "total_shows": len(active_shows),
+        "gone": gone_count,
+        "enabled": sum(1 for s in active_shows if s.archive_enabled),
         "pending": sum(1 for e in recent if e.status == "pending"),
         "downloaded": sum(1 for e in recent if e.status == "downloaded"),
         "failed": sum(1 for e in recent if e.status == "failed"),
@@ -107,6 +111,17 @@ def trigger_scrape(session: Session = Depends(get_session)):
     return RedirectResponse("/archive", status_code=303)
 
 
+@router.post("/sync-schedule")
+def trigger_schedule_sync(session: Session = Depends(get_session)):
+    """Check Confessor schedule page for new shows not yet in the DB."""
+    try:
+        counts = sync_new_shows(session)
+        logger.info("Manual schedule sync triggered: %s", counts)
+    except Exception as e:
+        logger.error("Manual schedule sync failed: %s", e)
+    return RedirectResponse("/archive", status_code=303)
+
+
 @router.post("/seed")
 def trigger_seed(session: Session = Depends(get_session)):
     """Import shows from reference/showst.txt into the Show table."""
@@ -118,6 +133,44 @@ def trigger_seed(session: Session = Depends(get_session)):
     return RedirectResponse("/archive", status_code=303)
 
 
+@router.post("/shows/add")
+async def add_show(request: Request, session: Session = Depends(get_session)):
+    """Manually add a new show that isn't in showst.txt."""
+    form = await request.form()
+    show_key = (form.get("show_key") or "").strip().lower()
+    display_name = (form.get("display_name") or "").strip()
+    schedule_day = (form.get("schedule_day") or "").strip() or None
+    schedule_time = (form.get("schedule_time") or "").strip() or None
+    try:
+        duration = max(1, int(form.get("duration") or 120))
+    except (ValueError, TypeError):
+        duration = 120
+
+    if not show_key or not display_name:
+        logger.warning("Add show: missing show_key or display_name")
+        return RedirectResponse("/archive", status_code=303)
+
+    existing = session.exec(select(Show).where(Show.show_key == show_key)).first()
+    if not existing:
+        show = Show(
+            show_key=show_key,
+            display_name=display_name,
+            archive_enabled=True,
+            evergreen_default=True,
+            expected_duration_min=duration,
+            confirmed_by_manager=False,
+            schedule_day=schedule_day,
+            schedule_time=schedule_time,
+        )
+        session.add(show)
+        session.commit()
+        logger.info("Added new show: %s (%s)", display_name, show_key)
+    else:
+        logger.warning("Add show: key already exists: %s", show_key)
+
+    return RedirectResponse("/archive", status_code=303)
+
+
 @router.post("/shows/{show_key}/toggle")
 def toggle_show(show_key: str, session: Session = Depends(get_session)):
     """Toggle archive_enabled for a show."""
@@ -126,6 +179,18 @@ def toggle_show(show_key: str, session: Session = Depends(get_session)):
         show.archive_enabled = not show.archive_enabled
         session.add(show)
         session.commit()
+    return RedirectResponse("/archive", status_code=303)
+
+
+@router.post("/shows/{show_key}/toggle-gone")
+def toggle_gone(show_key: str, session: Session = Depends(get_session)):
+    """Mark or unmark a show as gone (no longer airing)."""
+    show = session.exec(select(Show).where(Show.show_key == show_key)).first()
+    if show:
+        show.is_gone = not show.is_gone
+        session.add(show)
+        session.commit()
+        logger.info("Show %s is_gone → %s", show_key, show.is_gone)
     return RedirectResponse("/archive", status_code=303)
 
 

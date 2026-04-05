@@ -40,7 +40,9 @@ def sync_episodes(session: Session) -> dict[str, int]:
 
     Returns counts dict: {created, skipped, failed}.
     """
-    shows = session.exec(select(Show).where(Show.archive_enabled == True)).all()
+    shows = session.exec(
+        select(Show).where(Show.archive_enabled == True, Show.is_gone == False)
+    ).all()
     counts: dict[str, int] = {"created": 0, "skipped": 0, "failed": 0}
 
     for show in shows:

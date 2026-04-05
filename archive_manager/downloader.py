@@ -15,11 +15,11 @@ import time
 from pathlib import Path
 
 import requests
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from archive_manager.nas import get_archive_dir
+from archive_manager.nas import get_archive_dir, sanitize_show_name
 from shared.config import get
-from shared.models import Episode, SystemEvent
+from shared.models import Episode, Show, SystemEvent
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,20 @@ def _fail_episode(session: Session, episode: Episode, message: str) -> None:
     session.commit()
 
 
+def _build_filename(episode: Episode, show: Show | None) -> str:
+    """
+    Build the final MP3 filename.
+    Format: YYYY-MM-DD [Show Name] - WDBX.mp3
+    Falls back to show_key if no Show record is available.
+    """
+    date_tag = episode.air_datetime.strftime("%Y-%m-%d")
+    if show and show.display_name:
+        label = sanitize_show_name(show.display_name)
+    else:
+        label = episode.show_key
+    return f"{date_tag} [{label}] - WDBX.mp3"
+
+
 def download_episode(episode: Episode, session: Session) -> bool:
     """
     Download (and if needed assemble) one episode.
@@ -98,11 +112,14 @@ def download_episode(episode: Episode, session: Session) -> bool:
         return False
 
     urls: list[str] = json.loads(episode.source_urls)
-    dest_dir = get_archive_dir(episode.show_key, episode.air_datetime.date())
+
+    # Look up the Show to get display_name and schedule_day for folder/filename
+    show = session.exec(select(Show).where(Show.show_key == episode.show_key)).first()
+
+    dest_dir = get_archive_dir(show or episode.show_key, episode.air_datetime.date())
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    date_tag = episode.air_datetime.strftime("%y%m%d_%H%M%S")
-    final_filename = f"{episode.show_key}_{date_tag}.mp3"
+    final_filename = _build_filename(episode, show)
     final_path = dest_dir / final_filename
 
     # Mark in-progress immediately
@@ -160,7 +177,7 @@ def copy_episode_to_nas(episode: Episode, session: Session) -> bool:
     if not episode.local_path:
         return False
 
-    from archive_manager.nas import nas_is_writable, get_archive_dir
+    from archive_manager.nas import nas_is_writable
     if not nas_is_writable():
         logger.error("NAS still not writable — cannot copy episode %d", episode.id)
         return False
@@ -170,7 +187,8 @@ def copy_episode_to_nas(episode: Episode, session: Session) -> bool:
         logger.error("Source file missing: %s", src)
         return False
 
-    nas_dir = get_archive_dir(episode.show_key, episode.air_datetime.date())
+    show = session.exec(select(Show).where(Show.show_key == episode.show_key)).first()
+    nas_dir = get_archive_dir(show or episode.show_key, episode.air_datetime.date())
     nas_dir.mkdir(parents=True, exist_ok=True)
     dest = nas_dir / src.name
 

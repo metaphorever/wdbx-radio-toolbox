@@ -70,6 +70,8 @@ async def save(request: Request, session: Session = Depends(get_session)):
     updated = 0
 
     for show in shows:
+        if show.is_gone:
+            continue  # never overwrite gone show settings from the wizard
         key = show.show_key
         show.archive_enabled = form.get(f"enabled_{key}") == "on"
         show.confirmed_by_manager = form.get(f"confirmed_{key}") == "on"

@@ -44,7 +44,20 @@
   {% endif %}
 
   <form action="/onboarding/save" method="post">
-  <main class="max-w-5xl mx-auto px-6 py-8 space-y-10">
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-10" x-data="{ showGone: false }">
+
+    {# Gone shows toggle — only show if any exist #}
+    {% set gone_count = namespace(n=0) %}
+    {% for day in day_order %}{% for s in by_day[day] %}{% if s.is_gone %}{% set gone_count.n = gone_count.n + 1 %}{% endif %}{% endfor %}{% endfor %}
+    {% for s in unscheduled %}{% if s.is_gone %}{% set gone_count.n = gone_count.n + 1 %}{% endif %}{% endfor %}
+    {% if gone_count.n > 0 %}
+    <div class="text-xs text-gray-600 flex items-center gap-2">
+      <span>{{ gone_count.n }} gone show{{ 's' if gone_count.n != 1 else '' }} hidden.</span>
+      <button type="button" @click="showGone = !showGone"
+        class="underline hover:text-gray-400 transition"
+        x-text="showGone ? 'Hide gone shows' : 'Show gone shows'"></button>
+    </div>
+    {% endif %}
 
     {% for day in day_order %}
     {% if by_day[day] %}
@@ -73,7 +86,8 @@
           </thead>
           <tbody>
             {% for show in by_day[day] %}
-            <tr class="border-b border-gray-900 {% if show.confirmed_by_manager %}opacity-60{% endif %}">
+            <tr class="border-b border-gray-900 {% if show.confirmed_by_manager and not show.is_gone %}opacity-60{% endif %}"
+              {% if show.is_gone %}x-show="showGone" x-cloak{% endif %}>
 
               {# Archive enabled toggle #}
               <td class="py-2 pr-3">
@@ -84,7 +98,12 @@
 
               {# Show name + key #}
               <td class="py-2 pr-4">
-                <div class="font-medium">{{ show.display_name }}</div>
+                <div class="font-medium {% if show.is_gone %}line-through text-gray-600{% endif %}">
+                  {{ show.display_name }}
+                  {% if show.is_gone %}
+                  <span class="ml-1 text-xs no-underline not-italic text-gray-700 border border-gray-800 rounded px-1" style="text-decoration:none">gone</span>
+                  {% endif %}
+                </div>
                 <div class="text-xs text-gray-600">{{ show.show_key }}</div>
               </td>
 
@@ -137,7 +156,7 @@
       <table class="w-full text-sm border-collapse">
         <tbody>
           {% for show in unscheduled %}
-          <tr class="border-b border-gray-900">
+          <tr class="border-b border-gray-900" {% if show.is_gone %}x-show="showGone" x-cloak{% endif %}>
             <td class="py-2 pr-3 w-8">
               <input type="checkbox" name="enabled_{{ show.show_key }}"
                 {% if show.archive_enabled %}checked{% endif %}

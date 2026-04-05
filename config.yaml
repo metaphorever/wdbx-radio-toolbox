@@ -10,6 +10,13 @@ pacifica:
   scrape_interval_hours: 6
   download_delay_hours: 24  # download ~24h after air time
 
+archive:
+  index_url: "https://archive.wdbx.org/"  # show dropdown is the authoritative slug source
+
+confessor:
+  schedule_url: "https://confessor.wdbx.org/playlist/pub_sched.php"
+  schedule_sync_interval_hours: 24  # check for new shows once a day
+
 nas:
   mount_point: "/mnt/wdbx-share"
   archive_path: "/mnt/wdbx-share/Shows/AutoArchive"
