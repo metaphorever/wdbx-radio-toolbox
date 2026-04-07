@@ -39,7 +39,11 @@
 
   {# ── System events ── #}
   {% if events %}
-  <div class="px-6 py-4 space-y-2">
+  <div class="px-6 pt-4 flex items-center justify-between">
+    <span class="text-xs text-gray-600 uppercase tracking-widest">Active alerts</span>
+    <a href="/archive/log" class="text-xs text-gray-600 hover:text-gray-400 transition">View full log →</a>
+  </div>
+  <div class="px-6 py-2 space-y-2">
     {% for event in events %}
     <div class="flex items-start justify-between gap-4 rounded border px-4 py-3
       {% if event.severity == 'error' or event.severity == 'critical' %}border-red-800 bg-red-950 text-red-300
@@ -58,6 +62,11 @@
     </div>
     {% endfor %}
   </div>
+  {% else %}
+  <div class="px-6 pt-3 text-right">
+    <a href="/archive/log" class="text-xs text-gray-700 hover:text-gray-500 transition">View log →</a>
+  </div>
+  {% endif %}
   {% endif %}
 
   <main class="max-w-6xl mx-auto px-6 py-8 space-y-10" x-data="{ showGone: false, addShowOpen: false }">
@@ -97,7 +106,13 @@
         </form>
         <form action="/archive/scrape" method="post">
           <button class="text-sm px-4 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold">
-            Scrape Archive Now
+            Scrape Now
+          </button>
+        </form>
+        <form action="/archive/scrape-backlog" method="post">
+          <button class="text-sm px-4 py-2 rounded border border-indigo-800 hover:border-indigo-600 text-indigo-400 transition"
+            title="Fetch up to 100 episodes per show — catches older available episodes beyond the normal 20">
+            Fetch Backlog
           </button>
         </form>
       </div>

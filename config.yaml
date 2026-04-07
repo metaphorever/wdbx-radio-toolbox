@@ -12,6 +12,9 @@ pacifica:
 
 archive:
   index_url: "https://archive.wdbx.org/"  # show dropdown is the authoritative slug source
+  filename_template: "{date} [{show}] - WDBX"
+  # Available placeholders: {date} (YYYY-MM-DD), {show} (sanitized show name), {time} (HH:MM air time)
+  # .mp3 is always appended automatically — do not include it in the template
 
 confessor:
   schedule_url: "https://confessor.wdbx.org/playlist/pub_sched.php"

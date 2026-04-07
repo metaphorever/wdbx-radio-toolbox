@@ -38,6 +38,49 @@
 
     <form action="/settings/save" method="post" class="space-y-6">
 
+      {# ── Download Naming ─────────────────────────────────────────── #}
+      <div class="rounded border border-gray-800 bg-gray-900/50 px-5 py-4 space-y-4">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Download Naming</h2>
+
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Filename Template</label>
+          <input
+            id="filename-template-input"
+            type="text"
+            name="archive.filename_template"
+            value="{{ filename_template }}"
+            placeholder="{date} [{show}] - WDBX"
+            class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                   focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+          <p class="mt-1 text-xs text-gray-600">
+            <span class="text-gray-500">.mp3</span> is always appended automatically.
+          </p>
+        </div>
+
+        {# Placeholder reference #}
+        <div class="grid grid-cols-3 gap-2 text-xs">
+          <div class="rounded bg-gray-950 border border-gray-800 px-3 py-2">
+            <code class="text-indigo-400">{date}</code>
+            <p class="text-gray-600 mt-0.5">YYYY-MM-DD air date</p>
+          </div>
+          <div class="rounded bg-gray-950 border border-gray-800 px-3 py-2">
+            <code class="text-indigo-400">{show}</code>
+            <p class="text-gray-600 mt-0.5">Sanitized show name</p>
+          </div>
+          <div class="rounded bg-gray-950 border border-gray-800 px-3 py-2">
+            <code class="text-indigo-400">{time}</code>
+            <p class="text-gray-600 mt-0.5">Air time (HH:MM)</p>
+          </div>
+        </div>
+
+        {# Live preview #}
+        <div class="text-xs text-gray-500">
+          Preview:
+          <span id="filename-preview" class="text-gray-300 font-mono"></span>
+        </div>
+      </div>
+
+      {# ── Paths ───────────────────────────────────────────────────── #}
       <div class="space-y-5">
         {% for dot_key, label, hint in fields %}
         <div>
@@ -81,5 +124,24 @@
 
   </main>
 
+<script>
+  (function () {
+    const input   = document.getElementById('filename-template-input');
+    const preview = document.getElementById('filename-preview');
+
+    const EXAMPLES = { date: '2026-04-07', show: 'Island Report', time: '07:00' };
+
+    function renderPreview(template) {
+      let result = template
+        .replace(/\{date\}/g, EXAMPLES.date)
+        .replace(/\{show\}/g, EXAMPLES.show)
+        .replace(/\{time\}/g, EXAMPLES.time);
+      preview.textContent = result + '.mp3';
+    }
+
+    input.addEventListener('input', () => renderPreview(input.value));
+    renderPreview(input.value);
+  })();
+</script>
 </body>
 </html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archive Log — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-4">
+    <a href="/archive" class="text-gray-500 hover:text-gray-300 text-sm">← Archive</a>
+    <h1 class="text-xl font-bold tracking-wide">Archive Log</h1>
+    <span class="text-xs text-gray-600">last {{ events|length }} events</span>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-6 py-8">
+
+    {% if not events %}
+      <p class="text-sm text-gray-600">No events recorded yet.</p>
+    {% else %}
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-800">
+          <th class="pb-2 pr-4 font-normal w-20">Level</th>
+          <th class="pb-2 pr-4 font-normal">Message</th>
+          <th class="pb-2 pr-4 font-normal w-36 text-right">Time</th>
+          <th class="pb-2 font-normal w-20 text-right">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for event in events %}
+        <tr class="border-b border-gray-900 hover:bg-gray-900/30 transition
+          {% if event.resolved_at %}opacity-40{% endif %}">
+
+          <td class="py-2 pr-4">
+            <span class="text-xs px-1.5 py-0.5 rounded font-semibold
+              {% if event.severity == 'critical' %}bg-red-900 text-red-200
+              {% elif event.severity == 'error' %}bg-red-950 text-red-400
+              {% elif event.severity == 'warning' %}bg-yellow-950 text-yellow-400
+              {% else %}bg-gray-900 text-gray-500{% endif %}">
+              {{ event.severity }}
+            </span>
+          </td>
+
+          <td class="py-2 pr-4 text-gray-300">{{ event.message }}</td>
+
+          <td class="py-2 pr-4 text-gray-600 text-xs text-right tabular-nums">
+            {{ event.created_at.strftime('%Y-%m-%d %H:%M') }}
+          </td>
+
+          <td class="py-2 text-right">
+            {% if event.resolved_at %}
+              <span class="text-xs text-gray-700">dismissed</span>
+            {% else %}
+              <form action="/archive/events/{{ event.id }}/resolve" method="post" class="inline">
+                <button class="text-xs text-gray-600 hover:text-gray-400 border border-gray-800
+                               hover:border-gray-600 px-2 py-0.5 rounded transition">
+                  Dismiss
+                </button>
+              </form>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+  </main>
+
+</body>
+</html>

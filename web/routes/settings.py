@@ -70,6 +70,7 @@ def settings_page(request: Request):
         "nas_ok": nas_ok,
         "local_exists": local_exists,
         "local_config_path": str(LOCAL_CONFIG_PATH),
+        "filename_template": get("archive.filename_template", "{date} [{show}] - WDBX"),
     })
 
 
@@ -82,6 +83,10 @@ async def save_settings(request: Request):
         value = (form.get(dot_key) or "").strip()
         if value:
             _set_nested(local_cfg, dot_key, value)
+
+    template_value = (form.get("archive.filename_template") or "").strip()
+    if template_value:
+        _set_nested(local_cfg, "archive.filename_template", template_value)
 
     _save_local_config(local_cfg)
 

@@ -16,8 +16,8 @@ from sqlmodel import Session, select
 
 from archive_manager.downloader import copy_episode_to_nas
 from archive_manager.nas import nas_is_writable
-from archive_manager.schedule_scraper import sync_new_shows
-from archive_manager.scraper import sync_episodes
+from archive_manager.schedule_scraper import sync_gone_shows, sync_new_shows
+from archive_manager.scraper import EPISODES_BACKLOG, sync_episodes
 from archive_manager.seeder import seed_from_file
 from shared.database import get_session
 from shared.models import Episode, Show, SystemEvent
@@ -108,6 +108,22 @@ def trigger_scrape(session: Session = Depends(get_session)):
         logger.info("Manual scrape triggered: %s", counts)
     except Exception as e:
         logger.error("Manual scrape failed: %s", e)
+    return RedirectResponse("/archive", status_code=303)
+
+
+@router.post("/scrape-backlog")
+def trigger_backlog_scrape(session: Session = Depends(get_session)):
+    """Fetch full available backlog (up to 100 episodes per show) and queue anything new."""
+    try:
+        counts = sync_episodes(session, num=EPISODES_BACKLOG)
+        logger.info("Backlog scrape complete: %s", counts)
+        session.add(SystemEvent(
+            severity="info",
+            message=f"Backlog scrape complete — {counts['created']} new episode(s) queued across all shows",
+        ))
+        session.commit()
+    except Exception as e:
+        logger.error("Backlog scrape failed: %s", e)
     return RedirectResponse("/archive", status_code=303)
 
 
@@ -212,6 +228,16 @@ def retry_episode(episode_id: int, session: Session = Depends(get_session)):
         session.add(episode)
         session.commit()
     return RedirectResponse("/archive", status_code=303)
+
+
+@router.get("/log", response_class=HTMLResponse)
+def archive_log(request: Request, session: Session = Depends(get_session)):
+    events = session.exec(
+        select(SystemEvent)
+        .order_by(SystemEvent.created_at.desc())
+        .limit(200)
+    ).all()
+    return templates.TemplateResponse(request, "archive_log.html", {"events": events})
 
 
 @router.post("/events/{event_id}/resolve")

@@ -38,6 +38,7 @@ class Episode(SQLModel, table=True):
     fragmented_source: bool = False          # True if assembled from restart fragments
     suspect_quality: bool = False            # True if duration significantly < scheduled slot
     fingerprint: Optional[str] = None
+    expires_at: Optional[datetime] = None   # Archive expiry from API — None if not provided
 
 
 class AnalysisResult(SQLModel, table=True):

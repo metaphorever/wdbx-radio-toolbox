@@ -89,16 +89,26 @@ def _fail_episode(session: Session, episode: Episode, message: str) -> None:
 
 def _build_filename(episode: Episode, show: Show | None) -> str:
     """
-    Build the final MP3 filename.
-    Format: YYYY-MM-DD [Show Name] - WDBX.mp3
+    Build the final MP3 filename from the configured template.
+    Template is read from archive.filename_template in config.
+    .mp3 is always appended — never include it in the template.
     Falls back to show_key if no Show record is available.
     """
+    template = get("archive.filename_template", "{date} [{show}] - WDBX")
+
     date_tag = episode.air_datetime.strftime("%Y-%m-%d")
+
     if show and show.display_name:
-        label = sanitize_show_name(show.display_name)
+        show_label = sanitize_show_name(show.display_name)
     else:
-        label = episode.show_key
-    return f"{date_tag} [{label}] - WDBX.mp3"
+        show_label = episode.show_key
+
+    time_tag = ""
+    if show and show.schedule_time and len(show.schedule_time) >= 4:
+        time_tag = f"{show.schedule_time[:2]}:{show.schedule_time[2:4]}"
+
+    name = template.format(date=date_tag, show=show_label, time=time_tag)
+    return f"{name}.mp3"
 
 
 def download_episode(episode: Episode, session: Session) -> bool:
@@ -158,7 +168,13 @@ def download_episode(episode: Episode, session: Session) -> bool:
         if nas_base and str(final_path).startswith(nas_base):
             episode.nas_path = str(final_path)
 
+        show_label = show.display_name if show and show.display_name else episode.show_key
+        fragment_note = f" ({episode.fragment_count} fragments)" if episode.is_fragmented else ""
         session.add(episode)
+        session.add(SystemEvent(
+            severity="info",
+            message=f"Downloaded — {show_label} {episode.air_datetime:%Y-%m-%d}{fragment_note}",
+        ))
         session.commit()
         logger.info("Episode %d downloaded: %s", episode.id, final_path)
         return True

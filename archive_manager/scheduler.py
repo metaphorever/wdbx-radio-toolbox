@@ -17,7 +17,7 @@ from sqlmodel import Session, select
 from archive_manager.downloader import download_episode
 from archive_manager.mailer import send_alert
 from archive_manager.nas import nas_is_writable
-from archive_manager.schedule_scraper import sync_new_shows
+from archive_manager.schedule_scraper import sync_gone_shows, sync_new_shows
 from archive_manager.scraper import sync_episodes
 from shared.config import get
 from shared.database import get_engine
@@ -44,7 +44,7 @@ def _scrape_job() -> None:
 
 
 def _schedule_sync_job() -> None:
-    """Check Confessor schedule page for new shows not yet in the DB."""
+    """Sync new shows and gone shows from the Confessor API."""
     logger.info("Schedule sync job started")
     try:
         with Session(get_engine()) as session:
@@ -54,7 +54,15 @@ def _schedule_sync_job() -> None:
         else:
             logger.info("Schedule sync: no new shows")
     except Exception as e:
-        logger.error("Schedule sync job failed: %s", e)
+        logger.error("Schedule sync (new shows) failed: %s", e)
+
+    try:
+        with Session(get_engine()) as session:
+            gone_count = sync_gone_shows(session)
+        if gone_count > 0:
+            logger.info("Schedule sync: %d show(s) marked gone", gone_count)
+    except Exception as e:
+        logger.error("Schedule sync (gone shows) failed: %s", e)
 
 
 def _download_job() -> None:
@@ -94,7 +102,7 @@ def _download_job() -> None:
             select(Episode).where(
                 Episode.status == "pending",
                 Episode.air_datetime <= cutoff,
-            )
+            ).order_by(Episode.expires_at.is_(None), Episode.expires_at)
         ).all()
 
         if pending:
