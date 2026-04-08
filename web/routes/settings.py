@@ -35,6 +35,7 @@ EDITABLE_FIELDS = [
     ("local_staging.path",       "Local Staging Path",       "Fallback when NAS is unreachable"),
     ("database.path",            "Database Path",            "e.g. /home/wdbx/wdbx-toolbox/wdbx.db"),
     ("logging.file",             "Log File Path",            "e.g. /home/wdbx/wdbx-toolbox/logs/wdbx.log"),
+    ("library.detection_ref_path", "Detection Reference Path", "NAS folder of historical underwriting MP3s"),
 ]
 
 

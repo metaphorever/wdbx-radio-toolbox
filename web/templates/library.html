@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Library — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← Home</a>
+      <h1 class="text-xl font-bold tracking-wide">Library</h1>
+    </div>
+    <span class="text-xs text-gray-500">NAS asset sources &amp; per-show config</span>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-6 py-10 space-y-12">
+
+    {# ── Section A: Asset Sources ──────────────────────────────────── #}
+    <section class="space-y-4" x-data="{ showAddForm: false }">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Asset Sources</h2>
+        <button @click="showAddForm = !showAddForm"
+          class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:border-indigo-500
+                 text-gray-400 hover:text-gray-200 transition">
+          <span x-text="showAddForm ? '✕ Cancel' : '+ Add Source'"></span>
+        </button>
+      </div>
+
+      {# Add source form #}
+      <div x-show="showAddForm" x-cloak
+        class="rounded border border-gray-700 bg-gray-900/60 px-5 py-4">
+        <form action="/library/sources/add" method="post" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Label</label>
+              <input type="text" name="label" required placeholder="e.g. Morning Station IDs"
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">NAS Path</label>
+              <input type="text" name="nas_path" required placeholder="/mnt/wdbx-share/Library/StationIDs"
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Type</label>
+              <select name="source_type" required
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200">
+                <option value="" disabled selected>— select type —</option>
+                <option value="station_id">Station ID</option>
+                <option value="promo">Promo / Evergreen Spot</option>
+                <option value="padding">Padding</option>
+                <option value="announcement">Announcement</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">Notes <span class="text-gray-700">(optional)</span></label>
+              <input type="text" name="notes" placeholder="Optional description"
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button type="submit"
+              class="px-5 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+              Add Source
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {# Sources table #}
+      {% if sources %}
+      <div class="rounded border border-gray-800 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-900 text-gray-500 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="px-4 py-2 text-left">Type</th>
+              <th class="px-4 py-2 text-left">Label</th>
+              <th class="px-4 py-2 text-left">NAS Path</th>
+              <th class="px-4 py-2 text-left">Notes</th>
+              <th class="px-4 py-2 text-right"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800">
+            {% for source in sources %}
+            <tr class="hover:bg-gray-900/40">
+              <td class="px-4 py-2.5">
+                {% if source.source_type == "station_id" %}
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-900 text-blue-300">Station ID</span>
+                {% elif source.source_type == "promo" %}
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-900 text-purple-300">Promo</span>
+                {% elif source.source_type == "padding" %}
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-900 text-green-300">Padding</span>
+                {% elif source.source_type == "announcement" %}
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-900 text-amber-300">Announcement</span>
+                {% else %}
+                  <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-400">{{ source.source_type }}</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-2.5 text-gray-200">{{ source.label }}</td>
+              <td class="px-4 py-2.5 text-gray-400 font-mono text-xs">{{ source.nas_path }}</td>
+              <td class="px-4 py-2.5 text-gray-600 text-xs">{{ source.notes or "" }}</td>
+              <td class="px-4 py-2.5 text-right">
+                <form action="/library/sources/{{ source.id }}/delete" method="post"
+                  onsubmit="return confirm('Delete source {{ source.label }}?')">
+                  <button type="submit"
+                    class="text-xs text-gray-600 hover:text-red-400 transition px-2 py-1">
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm text-gray-600 italic">No sources registered yet.</p>
+      {% endif %}
+    </section>
+
+    {# ── Section B: Global Defaults ────────────────────────────────── #}
+    <section class="space-y-4">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Global Defaults</h2>
+      <p class="text-xs text-gray-600">
+        Active for all shows that have no per-show override configured below.
+      </p>
+
+      <form action="/library/config/save" method="post"
+        class="rounded border border-gray-800 bg-gray-900/50 px-5 py-5 space-y-6">
+        <input type="hidden" name="config_for" value="">
+
+        {% for type_key in source_types %}
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            {% if type_key == "station_id" %}
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-900 text-blue-300">Station ID</span>
+            {% elif type_key == "promo" %}
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-900 text-purple-300">Promo</span>
+            {% elif type_key == "padding" %}
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-900 text-green-300">Padding</span>
+            {% elif type_key == "announcement" %}
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-900 text-amber-300">Announcement</span>
+            {% endif %}
+          </div>
+          {% if sources_by_type[type_key] %}
+            <div class="space-y-1 pl-1">
+              {% for source in sources_by_type[type_key] %}
+              <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <input type="checkbox"
+                  name="{{ type_key }}_sources"
+                  value="{{ source.id }}"
+                  {% if source.id in global_checked[type_key] %}checked{% endif %}
+                  class="accent-indigo-500">
+                {{ source.label }}
+                <span class="text-xs text-gray-600">{{ source.nas_path }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-xs text-gray-700 pl-1 italic">— no sources registered</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="flex justify-end pt-2 border-t border-gray-800">
+          <button type="submit"
+            class="px-5 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+            Save Global Defaults
+          </button>
+        </div>
+      </form>
+    </section>
+
+    {# ── Section C: Per-Show Override ──────────────────────────────── #}
+    <section class="space-y-4">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Per-Show Override</h2>
+      <p class="text-xs text-gray-600">
+        Customize which source folders are used for a specific show. Shows with no override use global defaults.
+      </p>
+
+      {# Show selector #}
+      <form method="get" action="/library" class="flex items-center gap-3">
+        <select name="show"
+          class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm
+                 focus:border-indigo-500 focus:outline-none text-gray-200">
+          <option value="">— select a show —</option>
+          {% for show_obj in shows %}
+          <option value="{{ show_obj.show_key }}"
+            {% if show_obj.show_key == selected_show_key %}selected{% endif %}>
+            {{ show_obj.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+          class="px-4 py-2 rounded border border-gray-700 hover:border-indigo-500
+                 text-sm text-gray-300 hover:text-gray-100 transition">
+          Configure
+        </button>
+      </form>
+
+      {# Per-show config panel (only when a show is selected) #}
+      {% if selected_show %}
+      <div class="rounded border border-gray-700 bg-gray-900/50 px-5 py-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-gray-200">{{ selected_show.display_name }}</h3>
+          {% if selected_config %}
+            <span class="text-xs text-green-400">Custom config saved</span>
+          {% else %}
+            <span class="text-xs text-gray-500">Using global defaults</span>
+          {% endif %}
+        </div>
+
+        <form action="/library/config/save" method="post" class="space-y-6">
+          <input type="hidden" name="config_for" value="{{ selected_show_key }}">
+
+          {% for type_key in source_types %}
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              {% if type_key == "station_id" %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-900 text-blue-300">Station ID</span>
+              {% elif type_key == "promo" %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-900 text-purple-300">Promo</span>
+              {% elif type_key == "padding" %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-900 text-green-300">Padding</span>
+              {% elif type_key == "announcement" %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-900 text-amber-300">Announcement</span>
+              {% endif %}
+            </div>
+            {% if sources_by_type[type_key] %}
+              <div class="space-y-1 pl-1">
+                {% for source in sources_by_type[type_key] %}
+                <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                  <input type="checkbox"
+                    name="{{ type_key }}_sources"
+                    value="{{ source.id }}"
+                    {% if source.id in selected_checked[type_key] %}checked{% endif %}
+                    class="accent-indigo-500">
+                  {{ source.label }}
+                  <span class="text-xs text-gray-600">{{ source.nas_path }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-xs text-gray-700 pl-1 italic">— no sources registered</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+          <div class="flex justify-end pt-2 border-t border-gray-800">
+            <button type="submit"
+              class="px-5 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+              Save Override
+            </button>
+          </div>
+        </form>
+
+        {% if selected_config %}
+        <form action="/library/config/{{ selected_show_key }}/clear" method="post"
+          class="flex justify-start">
+          <button type="submit"
+            class="text-xs text-gray-600 hover:text-red-400 transition px-3 py-1.5 rounded
+                   border border-gray-800 hover:border-red-900">
+            Clear override (revert to global defaults)
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+
+  </main>
+
+</body>
+</html>

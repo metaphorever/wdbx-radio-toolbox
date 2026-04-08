@@ -39,6 +39,9 @@ logging:
   max_bytes: 10485760   # 10 MB
   backup_count: 5
 
+library:
+  detection_ref_path: ""  # NAS folder of historical underwriting MP3s for fingerprint matching
+
 smtp:
   host: ""              # e.g. smtp.gmail.com
   port: 587

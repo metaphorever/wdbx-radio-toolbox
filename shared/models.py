@@ -113,3 +113,20 @@ class SystemEvent(SQLModel, table=True):
     email_sent: bool = False
     resolved_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class LibrarySource(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    label: str                    # Human name, e.g. "Morning Station IDs"
+    nas_path: str                 # Absolute path on NAS to the folder
+    source_type: str              # station_id | promo | padding | announcement
+    notes: Optional[str] = None
+
+
+class ShowLibraryConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    show_key: Optional[str] = Field(default=None, index=True)  # None = global default
+    station_id_sources: Optional[str] = None   # JSON list of LibrarySource IDs
+    promo_sources: Optional[str] = None        # JSON list of LibrarySource IDs
+    padding_sources: Optional[str] = None      # JSON list of LibrarySource IDs
+    announcement_sources: Optional[str] = None # JSON list of LibrarySource IDs
