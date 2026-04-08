@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timeline — {{ show.display_name }} — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/ingest" class="text-gray-500 hover:text-gray-300 text-sm">← Ingest</a>
+      <h1 class="text-xl font-bold tracking-wide">{{ show.display_name }}</h1>
+      <span class="text-xs text-gray-600">timeline</span>
+    </div>
+    <span class="text-xs text-gray-500">
+      {{ show.schedule_day or "day unknown" }}
+      {% if show.schedule_time and show.schedule_time|length >= 4 %}
+        {{ show.schedule_time[:2] }}:{{ show.schedule_time[2:4] }}
+      {% endif %}
+      · {{ show.expected_duration_min }}min
+    </span>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-6 py-8 space-y-8">
+
+    {# ── Coverage summary bar ──────────────────────────────────────── #}
+    <div class="rounded border border-gray-800 bg-gray-900/50 px-5 py-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs text-gray-500 uppercase tracking-widest">Coverage</span>
+        <span class="text-sm font-bold {% if coverage_pct >= 80 %}text-green-400{% elif coverage_pct >= 50 %}text-yellow-400{% else %}text-red-400{% endif %}">
+          {{ coverage_pct }}%
+        </span>
+      </div>
+      {# Progress bar #}
+      <div class="w-full h-1.5 bg-gray-800 rounded overflow-hidden mb-4">
+        <div class="h-full bg-green-600 rounded"
+          style="width: {{ coverage_pct }}%"></div>
+      </div>
+      <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 text-center">
+        <div>
+          <div class="text-base font-bold text-gray-300">{{ total_expected }}</div>
+          <div class="text-xs text-gray-600">expected</div>
+        </div>
+        <div>
+          <div class="text-base font-bold text-green-400">{{ summary.canonical }}</div>
+          <div class="text-xs text-gray-600">canonical</div>
+        </div>
+        <div>
+          <div class="text-base font-bold text-gray-500">{{ summary.reair }}</div>
+          <div class="text-xs text-gray-600">re-airs</div>
+        </div>
+        <div>
+          <div class="text-base font-bold text-yellow-500">{{ summary.ingest_only }}</div>
+          <div class="text-xs text-gray-600">unreviewed</div>
+        </div>
+        <div>
+          <div class="text-base font-bold text-red-500">{{ summary.gap }}</div>
+          <div class="text-xs text-gray-600">gaps</div>
+        </div>
+        <div>
+          <div class="text-base font-bold text-gray-700">{{ summary.confirmed_gap }}</div>
+          <div class="text-xs text-gray-600">no-shows</div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Legend ────────────────────────────────────────────────────── #}
+    <div class="flex flex-wrap gap-4 text-xs text-gray-500">
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-green-700 inline-block"></span>canonical</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-green-900 inline-block"></span>source file (human)</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-gray-600 inline-block"></span>re-air</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-yellow-800 inline-block"></span>ingest file, unreviewed</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-blue-900 inline-block"></span>archive download only</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-red-900 inline-block"></span>gap — no file found</span>
+      <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-gray-800 inline-block border border-gray-700"></span>confirmed no-show</span>
+    </div>
+
+    {# ── Timeline rows ─────────────────────────────────────────────── #}
+    {% if rows %}
+    <div class="space-y-1">
+      {% for row in rows %}
+      {% set d = row.date %}
+      {% set status = row.status %}
+      {% set canonical = row.canonical %}
+      {% set cf = row.content_file %}
+      {% set files = row.ingest_files %}
+      {% set arc_eps = row.archive_eps %}
+      {% set note = row.note %}
+
+      {# Row color by status #}
+      {% if status == "canonical" %}
+        {% if cf and cf.file_origin == "source_file" %}
+          {% set row_color = "border-green-900 bg-green-950/20" %}
+          {% set dot_color = "bg-green-900" %}
+        {% else %}
+          {% set row_color = "border-green-800/40 bg-green-950/10" %}
+          {% set dot_color = "bg-green-700" %}
+        {% endif %}
+      {% elif status == "reair" %}
+        {% set row_color = "border-gray-700/40 bg-gray-900/20 opacity-70" %}
+        {% set dot_color = "bg-gray-600" %}
+      {% elif status == "ingest_only" %}
+        {% set row_color = "border-yellow-800/40 bg-yellow-950/10" %}
+        {% set dot_color = "bg-yellow-700" %}
+      {% elif status == "archive_only" %}
+        {% set row_color = "border-blue-800/40 bg-blue-950/10" %}
+        {% set dot_color = "bg-blue-800" %}
+      {% elif status == "gap" %}
+        {% set row_color = "border-red-900/50 bg-red-950/10" %}
+        {% set dot_color = "bg-red-800" %}
+      {% else %}{# confirmed_gap #}
+        {% set row_color = "border-gray-800 bg-gray-900/20 opacity-50" %}
+        {% set dot_color = "bg-gray-800 border border-gray-700" %}
+      {% endif %}
+
+      <div class="rounded border {{ row_color }} px-4 py-2.5 text-sm"
+        x-data="{ open: false }">
+        <div class="flex items-center gap-3 cursor-pointer" @click="open = !open">
+
+          {# Status dot #}
+          <span class="w-2.5 h-2.5 rounded-sm flex-shrink-0 {{ dot_color }}"></span>
+
+          {# Date #}
+          <span class="text-gray-300 w-24 flex-shrink-0">{{ d.strftime("%Y-%m-%d") }}</span>
+          <span class="text-gray-600 text-xs w-12 flex-shrink-0">{{ d.strftime("%a") }}</span>
+
+          {# Main info #}
+          <span class="flex-1 text-xs text-gray-500 truncate">
+            {% if status == "canonical" %}
+              {% if cf %}
+                <span class="{% if cf.file_origin == 'source_file' %}text-green-400{% else %}text-gray-400{% endif %}">
+                  {{ cf.file_path.split("/")[-1] }}
+                </span>
+                {% if cf.duration_sec %}
+                  <span class="text-gray-700 ml-2">
+                    {{ "%d:%02d"|format((cf.duration_sec // 60)|int, (cf.duration_sec % 60)|int) }}
+                  </span>
+                {% endif %}
+                {% if cf.file_origin == "source_file" %}
+                  <span class="text-green-600 ml-2">source file</span>
+                {% endif %}
+              {% else %}
+                <span class="text-gray-600">canonical (file missing)</span>
+              {% endif %}
+            {% elif status == "reair" %}
+              <span class="text-gray-500">re-air</span>
+              {% if canonical and canonical.original_canonical_id %}
+                <span class="text-gray-700 ml-2">of earlier broadcast</span>
+              {% endif %}
+              {% if cf %}
+                <span class="text-gray-600 ml-2">{{ cf.file_path.split("/")[-1] }}</span>
+              {% endif %}
+            {% elif status == "ingest_only" %}
+              <span class="text-yellow-600">{{ files|length }} file{{ 's' if files|length != 1 else '' }}, not yet reviewed</span>
+              {% if files %}
+                <span class="text-gray-700 ml-2">{{ files[0].file_path.split("/")[-1] }}</span>
+              {% endif %}
+            {% elif status == "archive_only" %}
+              <span class="text-blue-500">{{ arc_eps|length }} archive download{{ 's' if arc_eps|length != 1 else '' }}</span>
+              {% if arc_eps %}
+                <span class="text-gray-700 ml-2">status: {{ arc_eps[0].status }}</span>
+              {% endif %}
+            {% elif status == "gap" %}
+              <span class="text-red-600">no file found</span>
+            {% else %}
+              <span class="text-gray-600">
+                confirmed no-show{% if note and note.notes %}: {{ note.notes }}{% endif %}
+              </span>
+            {% endif %}
+          </span>
+
+          {# Expand chevron #}
+          <span class="text-gray-700 text-xs flex-shrink-0" x-text="open ? '▲' : '▼'"></span>
+        </div>
+
+        {# Expanded detail + actions #}
+        <div x-show="open" x-cloak class="mt-3 pt-3 border-t border-gray-800/60 space-y-3">
+
+          {# File list #}
+          {% if files %}
+          <div class="space-y-1">
+            <div class="text-xs text-gray-600 uppercase tracking-wider mb-1">Ingest files</div>
+            {% for f in files %}
+            <div class="flex items-center gap-3 text-xs text-gray-500">
+              <span class="{% if f.file_origin == 'source_file' %}text-green-400{% elif f.file_origin == 'archive' %}text-gray-500{% else %}text-gray-700{% endif %} flex-shrink-0">
+                {{ f.file_origin or "unknown" }}
+              </span>
+              {% if f.bitrate_kbps %}<span class="text-gray-700">{{ f.bitrate_kbps }}k</span>{% endif %}
+              {% if f.duration_sec %}<span class="text-gray-600">{{ "%d:%02d"|format((f.duration_sec // 60)|int, (f.duration_sec % 60)|int) }}</span>{% endif %}
+              <span class="text-gray-600 truncate" title="{{ f.file_path }}">{{ f.file_path.split("/")[-1] }}</span>
+              <span class="text-gray-700">{{ f.status }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if arc_eps %}
+          <div class="space-y-1">
+            <div class="text-xs text-gray-600 uppercase tracking-wider mb-1">Archive downloads</div>
+            {% for ep in arc_eps %}
+            <div class="text-xs text-gray-600">
+              status: {{ ep.status }}
+              {% if ep.actual_duration_sec %}· {{ "%d:%02d"|format((ep.actual_duration_sec // 60)|int, (ep.actual_duration_sec % 60)|int) }}{% endif %}
+              {% if ep.nas_path %}· <span class="text-gray-700">{{ ep.nas_path.split("/")[-1] }}</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {# Actions #}
+          <div class="flex flex-wrap gap-2 pt-1">
+
+            {# Mark as re-air #}
+            {% if status in ("canonical", "ingest_only") %}
+            <div x-data="{ showReair: false }">
+              <button @click="showReair = !showReair"
+                class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:border-gray-500
+                       text-gray-500 hover:text-gray-300 transition">
+                Mark as re-air
+              </button>
+              <div x-show="showReair" x-cloak class="mt-2">
+                <form action="/ingest/timeline/{{ show.show_key }}/mark-reair" method="post"
+                  class="flex items-center gap-2">
+                  <input type="hidden" name="expected_date" value="{{ d.strftime('%Y-%m-%d') }}">
+                  <input type="date" name="original_date"
+                    placeholder="Original broadcast date"
+                    class="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs
+                           focus:border-indigo-500 focus:outline-none text-gray-200">
+                  <span class="text-xs text-gray-600">original date (optional)</span>
+                  <button type="submit"
+                    class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs transition">
+                    Confirm
+                  </button>
+                </form>
+              </div>
+            </div>
+            {% endif %}
+
+            {# Confirmed gap / undo #}
+            {% if status == "gap" or status == "confirmed_gap" %}
+            <div x-data="{ showNote: false }">
+              {% if status == "confirmed_gap" %}
+              <form action="/ingest/timeline/{{ show.show_key }}/note/delete" method="post" class="inline">
+                <input type="hidden" name="expected_date" value="{{ d.strftime('%Y-%m-%d') }}">
+                <button type="submit"
+                  class="text-xs px-3 py-1.5 rounded border border-gray-800 hover:border-gray-600
+                         text-gray-600 hover:text-gray-400 transition">
+                  Undo no-show
+                </button>
+              </form>
+              {% else %}
+              <button @click="showNote = !showNote"
+                class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:border-gray-500
+                       text-gray-500 hover:text-gray-300 transition">
+                Mark as no-show
+              </button>
+              <div x-show="showNote" x-cloak class="mt-2">
+                <form action="/ingest/timeline/{{ show.show_key }}/note" method="post"
+                  class="flex items-center gap-2">
+                  <input type="hidden" name="expected_date" value="{{ d.strftime('%Y-%m-%d') }}">
+                  <input type="hidden" name="note_type" value="confirmed_gap">
+                  <input type="text" name="notes" placeholder="Reason (optional)"
+                    class="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs
+                           focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+                  <button type="submit"
+                    class="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs transition">
+                    Confirm
+                  </button>
+                </form>
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
+            {# Undo re-air #}
+            {% if status == "reair" %}
+            <form action="/ingest/timeline/{{ show.show_key }}/mark-reair" method="post" class="inline">
+              <input type="hidden" name="expected_date" value="{{ d.strftime('%Y-%m-%d') }}">
+              <input type="hidden" name="undo" value="true">
+              <span class="text-xs text-gray-600">
+                Linked to original:
+                {% if canonical and canonical.original_canonical_id %}
+                  {% for r in rows if r.canonical and r.canonical.id == canonical.original_canonical_id %}
+                    {{ r.date.strftime("%Y-%m-%d") }}
+                  {% endfor %}
+                {% else %}
+                  unknown
+                {% endif %}
+              </span>
+            </form>
+            {% endif %}
+
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="text-center py-20 text-gray-700">
+      <div class="text-2xl mb-2">No schedule data.</div>
+      <div class="text-sm">
+        Set <code>schedule_day</code> on this show (via onboarding or ingest review)
+        to generate expected dates.
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+</body>
+</html>

@@ -132,6 +132,19 @@ class ShowLibraryConfig(SQLModel, table=True):
     announcement_sources: Optional[str] = None # JSON list of LibrarySource IDs
 
 
+class ScheduleNote(SQLModel, table=True):
+    """Operator annotation on an expected schedule slot.
+    Used to mark confirmed no-shows (DJ out, holiday) so gaps don't look like missing data.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    show_key: str = Field(index=True)
+    expected_date: datetime                  # the Thursday / Monday / etc. this note applies to
+    note_type: str                           # confirmed_gap | uncertain
+    notes: Optional[str] = None
+    noted_by: str = "operator"
+    noted_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class IngestFile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     file_path: str = Field(unique=True, index=True)   # absolute path on NAS
