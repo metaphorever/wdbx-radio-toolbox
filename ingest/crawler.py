@@ -4,9 +4,14 @@ as an IngestFile record, reading ID3 metadata along the way.
 
 Designed to be run once per pilot show, then expanded to the full NAS.
 Does NOT fingerprint (slow) — that's a separate background job.
+
+Supports copy_to staging for removable media (USB drives): files are
+copied to a local staging directory before being registered so the
+IngestFile path remains valid after the drive is unplugged.
 """
 import hashlib
 import logging
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +23,24 @@ from ingest.classifier import classify_origin, parse_filename
 from shared.models import IngestFile
 
 logger = logging.getLogger(__name__)
+
+
+def _staging_dest(mp3_path: Path, staging_root: Path, source_root: Path) -> Path:
+    """
+    Mirror the relative path structure under staging_root.
+    /USB/Show/2023/foo.mp3 → {staging_root}/Show/2023/foo.mp3
+    Handles filename collisions by appending a counter.
+    """
+    try:
+        rel = mp3_path.relative_to(source_root)
+    except ValueError:
+        rel = Path(mp3_path.name)
+    dest = staging_root / rel
+    if dest.exists():
+        # Already copied — return existing path
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    return dest
 
 
 def _fast_hash(path: Path) -> str:
@@ -60,44 +83,68 @@ def crawl_directory(
     session: Session,
     show_keys: list[str] | None = None,
     show_display_names: dict[str, str] | None = None,
+    copy_to: Path | None = None,
 ) -> dict[str, int]:
     """
     Walk root recursively. For each .mp3 found:
     - Skip if already in DB (file_path unique constraint)
+    - Optionally copy to copy_to staging dir (for USB/removable media)
     - Read ID3 + duration
     - Attempt filename parse for show/date
     - Classify origin (archive vs source file)
     - Save IngestFile record
 
-    show_keys: if provided, only auto-match against these show keys
-    show_display_names: {show_key: display_name} for fuzzy matching
+    copy_to: if set, copy each MP3 here before registering. The registered
+             file_path will point to the copy; source_path preserves the
+             original USB location. Use for removable media so paths remain
+             valid after the drive is unplugged.
 
-    Returns counts: {found, created, skipped, errors}
+    Returns counts: {found, created, skipped, errors, copied}
     """
-    counts = {"found": 0, "created": 0, "skipped": 0, "errors": 0}
+    counts = {"found": 0, "created": 0, "skipped": 0, "errors": 0, "copied": 0}
 
     mp3_paths = sorted(root.rglob("*.mp3"))
-    logger.info("Crawl starting: %d MP3s found under %s", len(mp3_paths), root)
+    logger.info("Crawl starting: %d MP3s found under %s%s",
+                len(mp3_paths), root, f" (copy to {copy_to})" if copy_to else "")
 
     for mp3_path in mp3_paths:
         counts["found"] += 1
-        path_str = str(mp3_path)
 
-        # Skip already-crawled files
+        # If copying, determine dest and check if already registered under dest path
+        if copy_to:
+            dest_path = _staging_dest(mp3_path, copy_to, root)
+            register_path = dest_path
+        else:
+            register_path = mp3_path
+
+        path_str = str(register_path)
+
+        # Skip already-crawled files (check both the registration path and source path)
         existing = session.exec(
-            select(IngestFile).where(IngestFile.file_path == path_str)
+            select(IngestFile).where(
+                (IngestFile.file_path == path_str) |
+                (IngestFile.source_path == str(mp3_path))
+            )
         ).first()
         if existing:
             counts["skipped"] += 1
             continue
 
         try:
-            file_size = mp3_path.stat().st_size
-            audio_meta = _read_audio_meta(mp3_path)
-            file_hash = _fast_hash(mp3_path)
+            # Copy before reading so audio_meta comes from the permanent copy
+            if copy_to and not dest_path.exists():
+                shutil.copy2(mp3_path, dest_path)
+                counts["copied"] += 1
+                logger.debug("Copied %s → %s", mp3_path.name, dest_path)
+            elif copy_to:
+                counts["copied"] += 1  # already existed from a previous partial run
+
+            file_size = register_path.stat().st_size
+            audio_meta = _read_audio_meta(register_path)
+            file_hash = _fast_hash(register_path)
 
             parse_result = parse_filename(
-                mp3_path.name,
+                mp3_path.name,  # always parse original filename, not dest which may differ
                 known_show_keys=show_keys or [],
                 display_names=show_display_names or {},
             )
@@ -106,7 +153,7 @@ def crawl_directory(
                 bitrate_kbps=audio_meta.get("bitrate_kbps"),
                 duration_sec=audio_meta.get("duration_sec"),
                 show_key=parse_result.get("show_key"),
-                expected_duration_min=None,  # caller can enrich later
+                expected_duration_min=None,
             )
 
             # Determine initial status
@@ -134,6 +181,7 @@ def crawl_directory(
                 file_hash=file_hash,
                 status=status,
                 crawl_root=str(root),
+                source_path=str(mp3_path) if copy_to else None,
             )
             session.add(record)
             counts["created"] += 1

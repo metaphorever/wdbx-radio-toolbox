@@ -101,9 +101,11 @@ def ingest_page(request: Request, show: str = "", session: Session = Depends(get
 
 @router.post("/crawl")
 async def start_crawl(request: Request, session: Session = Depends(get_session)):
+    from shared.config import get as cfg_get
     form = await request.form()
     crawl_path = (form.get("crawl_path") or "").strip()
     filter_show = (form.get("filter_show") or "").strip()
+    copy_to_staging = form.get("copy_to_staging") == "on"
 
     if not crawl_path:
         return RedirectResponse("/ingest", status_code=303)
@@ -114,13 +116,33 @@ async def start_crawl(request: Request, session: Session = Depends(get_session))
         session.commit()
         return RedirectResponse("/ingest", status_code=303)
 
+    copy_to: Path | None = None
+    if copy_to_staging:
+        staging_base = cfg_get("local_staging.path", "")
+        if not staging_base:
+            session.add(SystemEvent(
+                severity="error",
+                message="Copy to staging requested but local_staging.path is not configured in Settings."
+            ))
+            session.commit()
+            return RedirectResponse("/ingest", status_code=303)
+        copy_to = Path(staging_base) / "ingest_import"
+        copy_to.mkdir(parents=True, exist_ok=True)
+
     shows = _get_shows(session)
     show_keys = [filter_show] if filter_show else list(shows.keys())
 
     try:
-        counts = crawl_directory(root, session, show_keys=show_keys, show_display_names=shows)
+        counts = crawl_directory(
+            root, session,
+            show_keys=show_keys,
+            show_display_names=shows,
+            copy_to=copy_to,
+        )
+        copy_note = f", {counts.get('copied', 0)} copied to staging" if copy_to else ""
         msg = (f"Crawl complete: {root} — "
-               f"{counts['created']} new, {counts['skipped']} skipped, {counts['errors']} errors")
+               f"{counts['created']} new, {counts['skipped']} skipped, "
+               f"{counts['errors']} errors{copy_note}")
         session.add(SystemEvent(severity="info", message=msg))
         session.commit()
         logger.info(msg)

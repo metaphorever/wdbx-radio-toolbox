@@ -164,6 +164,7 @@ class IngestFile(SQLModel, table=True):
     status: str = "pending"                # pending | matched | needs_review | canonical | duplicate | ignored
     duplicate_of_id: Optional[int] = None  # IngestFile.id of canonical copy
     crawl_root: Optional[str] = None       # which NAS path this crawl started from
+    source_path: Optional[str] = None      # original path if file was copied from removable media
     crawled_at: datetime = Field(default_factory=datetime.utcnow)
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None

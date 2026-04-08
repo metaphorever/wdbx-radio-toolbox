@@ -72,6 +72,17 @@
               </select>
             </div>
           </div>
+          <div class="flex items-start gap-3 pt-1">
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer select-none">
+              <input type="checkbox" name="copy_to_staging" class="accent-indigo-500 mt-0.5">
+              <span>Copy files to local staging</span>
+            </label>
+            <span class="text-xs text-gray-600 mt-0.5">
+              Use for USB drives or removable media — files are copied to
+              <code class="text-gray-500">local_staging.path/ingest_import/</code>
+              so paths stay valid after you unplug. Original location is preserved for provenance.
+            </span>
+          </div>
           <div class="text-xs text-gray-600">
             Reads ID3 tags and duration for each MP3. Does not fingerprint (use the Fingerprint button below for that).
             Re-running is safe — already-crawled files are skipped.
@@ -160,6 +171,11 @@
               x-data="{ open: false }">
               <td class="px-3 py-2 text-gray-300 max-w-xs">
                 <div class="truncate" title="{{ f.file_path }}">{{ f.file_path | replace(f.crawl_root ~ '/', '') if f.crawl_root else f.file_path.split('/')[-1] }}</div>
+                {% if f.source_path %}
+                  <div class="text-xs text-indigo-600 truncate" title="{{ f.source_path }}">
+                    &#x1F4BE; {{ f.source_path.split('/')[-1] }}
+                  </div>
+                {% endif %}
                 {% if f.status == 'needs_review' %}
                   <span class="text-yellow-600 text-xs">needs review</span>
                 {% else %}
