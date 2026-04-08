@@ -89,9 +89,25 @@ def ingest_page(request: Request, show: str = "", session: Session = Depends(get
         if f:
             canonical_files[c.id] = f
 
+    # Selected show object — for schedule_time default in review form
+    selected_show_obj = None
+    if show:
+        selected_show_obj = session.exec(
+            select(Show).where(Show.show_key == show)
+        ).first()
+
+    # Format schedule_time (HHMMSS) → HH:MM for the time input default
+    default_air_time = "00:00"
+    if selected_show_obj and selected_show_obj.schedule_time:
+        t = selected_show_obj.schedule_time
+        if len(t) >= 4:
+            default_air_time = f"{t[:2]}:{t[2:4]}"
+
     return templates.TemplateResponse(request, "ingest.html", {
         "shows": shows,
         "selected_show": show,
+        "selected_show_obj": selected_show_obj,
+        "default_air_time": default_air_time,
         "stats": by_status,
         "total": total,
         "review_files": review_files,

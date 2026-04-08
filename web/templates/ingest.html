@@ -264,10 +264,19 @@
                       class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
                              focus:border-indigo-500 focus:outline-none text-gray-200">
                   </div>
-                  <div>
-                    <label class="block text-xs text-gray-600 mb-1">Air time</label>
+                  <div x-data="{ airTime: '{{ f.air_datetime.strftime('%H:%M') if f.air_datetime else default_air_time }}' }">
+                    <label class="block text-xs text-gray-600 mb-1">
+                      Air time
+                      {% if selected_show_obj and selected_show_obj.schedule_time %}
+                        <button type="button"
+                          @click="airTime = '{{ default_air_time }}'"
+                          class="ml-2 text-gray-600 hover:text-gray-400 transition">
+                          ← {{ default_air_time }} (scheduled)
+                        </button>
+                      {% endif %}
+                    </label>
                     <input type="time" name="air_time"
-                      value="{{ f.air_datetime.strftime('%H:%M') if f.air_datetime else '00:00' }}"
+                      x-model="airTime"
                       class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
                              focus:border-indigo-500 focus:outline-none text-gray-200">
                   </div>
