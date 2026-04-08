@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingest — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← Home</a>
+      <h1 class="text-xl font-bold tracking-wide">Ingest</h1>
+    </div>
+    <span class="text-xs text-gray-500">Bulk ingestion &amp; classification — Phase 4</span>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-10">
+
+    {# ── Stats bar ──────────────────────────────────────────────────── #}
+    <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
+      {% set stat_colors = {
+        "pending": "text-gray-400",
+        "matched": "text-blue-400",
+        "needs_review": "text-yellow-400",
+        "canonical": "text-green-400",
+        "duplicate": "text-gray-600",
+        "ignored": "text-gray-700"
+      } %}
+      {% for status, count in stats.items() %}
+      <div class="rounded border border-gray-800 bg-gray-900/50 px-3 py-3 text-center">
+        <div class="text-lg font-bold {{ stat_colors[status] }}">{{ count }}</div>
+        <div class="text-xs text-gray-600 mt-0.5">{{ status.replace("_", " ") }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# ── Crawl + show selector ──────────────────────────────────────── #}
+    <section class="space-y-4" x-data="{ showCrawl: false }">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">NAS Crawl</h2>
+        <button @click="showCrawl = !showCrawl"
+          class="text-xs px-3 py-1.5 rounded border border-gray-700 hover:border-indigo-500
+                 text-gray-400 hover:text-gray-200 transition">
+          <span x-text="showCrawl ? '✕ Cancel' : '+ Start Crawl'"></span>
+        </button>
+      </div>
+
+      <div x-show="showCrawl" x-cloak class="rounded border border-gray-700 bg-gray-900/60 px-5 py-4">
+        <form action="/ingest/crawl" method="post" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">NAS Path to crawl</label>
+              <input type="text" name="crawl_path" required
+                placeholder="/mnt/wdbx-share/Shows/AutoArchive"
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">
+                Filter to show <span class="text-gray-600">(optional — leave blank for full crawl)</span>
+              </label>
+              <select name="filter_show"
+                class="w-full bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                       focus:border-indigo-500 focus:outline-none text-gray-200">
+                <option value="">— all shows —</option>
+                {% for key, name in shows.items() %}
+                <option value="{{ key }}">{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="text-xs text-gray-600">
+            Reads ID3 tags and duration for each MP3. Does not fingerprint (use the Fingerprint button below for that).
+            Re-running is safe — already-crawled files are skipped.
+          </div>
+          <div class="flex justify-end">
+            <button type="submit"
+              class="px-5 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+              Start Crawl
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {# Show selector + per-show actions #}
+      <form method="get" action="/ingest" class="flex items-center gap-3">
+        <select name="show"
+          class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm
+                 focus:border-indigo-500 focus:outline-none text-gray-200">
+          <option value="">— all files —</option>
+          {% for key, name in shows.items() %}
+          <option value="{{ key }}" {% if key == selected_show %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+          class="px-4 py-2 rounded border border-gray-700 hover:border-indigo-500
+                 text-sm text-gray-300 hover:text-gray-100 transition">
+          Filter
+        </button>
+      </form>
+
+      {% if selected_show %}
+      <div class="flex items-center gap-3 text-sm">
+        <form action="/ingest/auto-canonical" method="post" class="inline">
+          <input type="hidden" name="show_key" value="{{ selected_show }}">
+          <button type="submit"
+            class="px-4 py-1.5 rounded border border-gray-700 hover:border-green-600
+                   text-gray-400 hover:text-green-400 transition text-xs">
+            Auto-select Canonicals
+          </button>
+        </form>
+        <form action="/ingest/fingerprint-show" method="post" class="inline">
+          <input type="hidden" name="show_key" value="{{ selected_show }}">
+          <button type="submit"
+            class="px-4 py-1.5 rounded border border-gray-700 hover:border-blue-600
+                   text-gray-400 hover:text-blue-400 transition text-xs">
+            Fingerprint Show
+          </button>
+        </form>
+        <span class="text-xs text-gray-700">
+          Fingerprinting: ~5-10s per file. Full backlog may run overnight.
+        </span>
+      </div>
+      {% endif %}
+    </section>
+
+    {# ── Review queue ───────────────────────────────────────────────── #}
+    {% if review_files %}
+    <section class="space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">
+        Review Queue
+        <span class="text-gray-700 normal-case font-normal ml-1">
+          ({{ review_files|length }} file{{ 's' if review_files|length != 1 else '' }}{% if review_files|length == 100 %}, showing first 100{% endif %})
+        </span>
+      </h2>
+
+      <div class="rounded border border-gray-800 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-gray-900 text-gray-500 uppercase tracking-wider">
+            <tr>
+              <th class="px-3 py-2 text-left">File</th>
+              <th class="px-3 py-2 text-left">Duration</th>
+              <th class="px-3 py-2 text-left">Show guess</th>
+              <th class="px-3 py-2 text-left">Date guess</th>
+              <th class="px-3 py-2 text-left">Origin</th>
+              <th class="px-3 py-2 text-right"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800/60">
+            {% for f in review_files %}
+            <tr class="hover:bg-gray-900/40 {% if f.status == 'needs_review' %}bg-yellow-950/10{% endif %}"
+              x-data="{ open: false }">
+              <td class="px-3 py-2 text-gray-300 max-w-xs">
+                <div class="truncate" title="{{ f.file_path }}">{{ f.file_path | replace(f.crawl_root ~ '/', '') if f.crawl_root else f.file_path.split('/')[-1] }}</div>
+                {% if f.status == 'needs_review' %}
+                  <span class="text-yellow-600 text-xs">needs review</span>
+                {% else %}
+                  <span class="text-gray-700 text-xs">{{ f.status }}</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-400">
+                {% if f.duration_sec %}
+                  {% set mins = (f.duration_sec // 60)|int %}
+                  {% set secs = (f.duration_sec % 60)|int %}
+                  {{ "%d:%02d"|format(mins, secs) }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if f.show_key %}
+                  <span class="text-blue-400">{{ f.show_key }}</span>
+                  <span class="text-gray-700 ml-1">{{ f.show_key_confidence }}</span>
+                {% else %}
+                  <span class="text-gray-700">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-400">
+                {% if f.air_datetime %}
+                  {{ f.air_datetime.strftime("%Y-%m-%d") }}
+                  <span class="text-gray-700 ml-1">{{ f.air_date_confidence }}</span>
+                {% else %}
+                  <span class="text-gray-700">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if f.file_origin == "archive" %}
+                  <span class="text-gray-500">archive</span>
+                {% elif f.file_origin == "source_file" %}
+                  <span class="text-green-500">source</span>
+                {% else %}
+                  <span class="text-gray-700">unknown</span>
+                {% endif %}
+                {% if f.bitrate_kbps %}
+                  <span class="text-gray-700 ml-1">{{ f.bitrate_kbps }}k</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-right">
+                <button @click="open = !open"
+                  class="text-gray-600 hover:text-gray-300 transition px-2 py-1 text-xs">
+                  <span x-text="open ? 'Close' : 'Review'"></span>
+                </button>
+              </td>
+            </tr>
+
+            {# Inline review form #}
+            <tr x-show="open" x-cloak class="bg-gray-900/40">
+              <td colspan="6" class="px-4 py-4">
+                <form action="/ingest/files/{{ f.id }}/update" method="post"
+                  class="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Show key</label>
+                    <select name="show_key"
+                      class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
+                             focus:border-indigo-500 focus:outline-none text-gray-200">
+                      <option value="">— not matched —</option>
+                      {% for key, name in shows.items() %}
+                      <option value="{{ key }}" {% if key == f.show_key %}selected{% endif %}>{{ name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Air date</label>
+                    <input type="date" name="air_date"
+                      value="{{ f.air_datetime.strftime('%Y-%m-%d') if f.air_datetime else '' }}"
+                      class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
+                             focus:border-indigo-500 focus:outline-none text-gray-200">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Air time</label>
+                    <input type="time" name="air_time"
+                      value="{{ f.air_datetime.strftime('%H:%M') if f.air_datetime else '00:00' }}"
+                      class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
+                             focus:border-indigo-500 focus:outline-none text-gray-200">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-600 mb-1">Status</label>
+                    <select name="status"
+                      class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
+                             focus:border-indigo-500 focus:outline-none text-gray-200">
+                      <option value="needs_review" {% if f.status == "needs_review" %}selected{% endif %}>needs review</option>
+                      <option value="matched" {% if f.status == "matched" %}selected{% endif %}>matched</option>
+                      <option value="ignored" {% if f.status == "ignored" %}selected{% endif %}>ignored</option>
+                    </select>
+                  </div>
+                  <div class="col-span-2 sm:col-span-3">
+                    <label class="block text-xs text-gray-600 mb-1">Notes</label>
+                    <input type="text" name="notes" value="{{ f.notes or '' }}"
+                      placeholder="Optional notes"
+                      class="w-full bg-gray-950 border border-gray-700 rounded px-2 py-1.5 text-xs
+                             focus:border-indigo-500 focus:outline-none text-gray-200 placeholder-gray-700">
+                  </div>
+                  <div class="flex gap-2 justify-end items-end">
+                    <form action="/ingest/files/{{ f.id }}/ignore" method="post" class="inline">
+                      <button type="submit"
+                        class="px-3 py-1.5 rounded border border-gray-800 hover:border-red-900
+                               text-xs text-gray-600 hover:text-red-400 transition">
+                        Ignore
+                      </button>
+                    </form>
+                    <button type="submit"
+                      class="px-4 py-1.5 rounded bg-indigo-700 hover:bg-indigo-600 transition text-xs font-semibold">
+                      Save
+                    </button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {# ── Matched files for selected show ────────────────────────────── #}
+    {% if matched_files %}
+    <section class="space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">
+        Matched Files — {{ shows.get(selected_show, selected_show) }}
+      </h2>
+
+      <div class="rounded border border-gray-800 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-gray-900 text-gray-500 uppercase tracking-wider">
+            <tr>
+              <th class="px-3 py-2 text-left">Air date</th>
+              <th class="px-3 py-2 text-left">Duration</th>
+              <th class="px-3 py-2 text-left">Origin</th>
+              <th class="px-3 py-2 text-left">Encoder</th>
+              <th class="px-3 py-2 text-left">File</th>
+              <th class="px-3 py-2 text-left">Status</th>
+              <th class="px-3 py-2 text-right"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800/60">
+            {% for f in matched_files %}
+            <tr class="hover:bg-gray-900/40">
+              <td class="px-3 py-2 text-gray-300">
+                {{ f.air_datetime.strftime("%Y-%m-%d") if f.air_datetime else "—" }}
+                {% if f.air_date_confidence == "human" %}
+                  <span class="text-yellow-600 ml-1">human</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-400">
+                {% if f.duration_sec %}
+                  {% set mins = (f.duration_sec // 60)|int %}{{ "%d:%02d"|format(mins, (f.duration_sec % 60)|int) }}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if f.file_origin == "source_file" %}
+                  <span class="text-green-400">source</span>
+                {% elif f.file_origin == "archive" %}
+                  <span class="text-gray-500">archive</span>
+                {% else %}
+                  <span class="text-gray-700">unknown</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-600 truncate max-w-24"
+                title="{{ f.encoder_tag or '' }}">
+                {{ (f.encoder_tag or "—")[:20] }}
+              </td>
+              <td class="px-3 py-2 text-gray-500 truncate max-w-48"
+                title="{{ f.file_path }}">
+                {{ f.file_path.split("/")[-1] }}
+              </td>
+              <td class="px-3 py-2">
+                {% if f.status == "canonical" %}
+                  <span class="text-green-400">canonical</span>
+                {% elif f.status == "duplicate" %}
+                  <span class="text-gray-600">duplicate</span>
+                {% else %}
+                  <span class="text-gray-500">{{ f.status }}</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-right">
+                {% if f.status != "canonical" and f.air_datetime %}
+                <form action="/ingest/canonical/set" method="post" class="inline">
+                  <input type="hidden" name="file_id" value="{{ f.id }}">
+                  <input type="hidden" name="reviewer" value="operator">
+                  <button type="submit"
+                    class="text-xs text-gray-600 hover:text-green-400 transition px-2 py-1">
+                    Set canonical
+                  </button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {# ── Canonical decisions ─────────────────────────────────────────── #}
+    {% if canonicals %}
+    <section class="space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">
+        Canonical Episodes — {{ shows.get(selected_show, selected_show) }}
+        <span class="text-gray-700 normal-case font-normal ml-1">({{ canonicals|length }} decided)</span>
+      </h2>
+
+      <div class="rounded border border-gray-800 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-gray-900 text-gray-500 uppercase tracking-wider">
+            <tr>
+              <th class="px-3 py-2 text-left">True air date</th>
+              <th class="px-3 py-2 text-left">Content file</th>
+              <th class="px-3 py-2 text-left">Origin</th>
+              <th class="px-3 py-2 text-left">Decision</th>
+              <th class="px-3 py-2 text-left">Re-air</th>
+              <th class="px-3 py-2 text-left">Notes</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800/60">
+            {% for c in canonicals %}
+            {% set cf = canonical_files.get(c.id) %}
+            <tr class="hover:bg-gray-900/40 {% if c.is_reair %}opacity-60{% endif %}">
+              <td class="px-3 py-2 text-gray-300">{{ c.true_air_date.strftime("%Y-%m-%d") }}</td>
+              <td class="px-3 py-2 text-gray-500 truncate max-w-48"
+                title="{{ cf.file_path if cf else '' }}">
+                {{ cf.file_path.split("/")[-1] if cf else "—" }}
+              </td>
+              <td class="px-3 py-2">
+                {% if cf %}
+                  {% if cf.file_origin == "source_file" %}
+                    <span class="text-green-400">source</span>
+                  {% elif cf.file_origin == "archive" %}
+                    <span class="text-gray-500">archive</span>
+                  {% else %}
+                    <span class="text-gray-700">unknown</span>
+                  {% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if c.decision == "human_confirmed" %}
+                  <span class="text-yellow-500">human</span>
+                {% elif c.decision == "human_override" %}
+                  <span class="text-orange-400">override</span>
+                {% else %}
+                  <span class="text-gray-600">auto</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2">
+                {% if c.is_reair %}<span class="text-gray-500">re-air</span>{% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-600">{{ c.notes or "" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if not review_files and not matched_files and not canonicals %}
+    <div class="text-center py-20 text-gray-700">
+      <div class="text-2xl mb-2">No files ingested yet.</div>
+      <div class="text-sm">Start a NAS crawl above to begin.</div>
+    </div>
+    {% endif %}
+
+  </main>
+</body>
+</html>

@@ -130,3 +130,42 @@ class ShowLibraryConfig(SQLModel, table=True):
     promo_sources: Optional[str] = None        # JSON list of LibrarySource IDs
     padding_sources: Optional[str] = None      # JSON list of LibrarySource IDs
     announcement_sources: Optional[str] = None # JSON list of LibrarySource IDs
+
+
+class IngestFile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    file_path: str = Field(unique=True, index=True)   # absolute path on NAS
+    file_size_bytes: int = 0
+    duration_sec: Optional[float] = None
+    show_key: Optional[str] = Field(default=None, index=True)   # matched show
+    show_key_confidence: str = "none"      # filename_exact | filename_fuzzy | human | none
+    air_datetime: Optional[datetime] = None
+    air_date_confidence: str = "none"      # filename | archive_record | human | none
+    file_origin: str = "unknown"           # archive | source_file | unknown
+    origin_confidence: str = "none"        # auto | human
+    encoder_tag: Optional[str] = None      # TENC/TSSE from ID3
+    bitrate_kbps: Optional[int] = None
+    file_hash: Optional[str] = None        # MD5 of first+last 64KB (fast near-dedup)
+    fingerprint: Optional[str] = None      # chromaprint whole-file (slow, nullable)
+    fingerprint_duration: Optional[float] = None
+    status: str = "pending"                # pending | matched | needs_review | canonical | duplicate | ignored
+    duplicate_of_id: Optional[int] = None  # IngestFile.id of canonical copy
+    crawl_root: Optional[str] = None       # which NAS path this crawl started from
+    crawled_at: datetime = Field(default_factory=datetime.utcnow)
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class CanonicalEpisode(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    show_key: str = Field(index=True)
+    true_air_date: datetime              # earliest known broadcast date
+    content_file_id: int                 # IngestFile.id of best file to use
+    decision: str = "auto"               # auto | human_confirmed | human_override
+    is_reair: bool = False               # True if this date is a re-broadcast
+    original_canonical_id: Optional[int] = None  # → CanonicalEpisode.id of first broadcast
+    notes: Optional[str] = None
+    decided_by: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
