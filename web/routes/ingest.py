@@ -383,6 +383,58 @@ async def fingerprint_show(request: Request, session: Session = Depends(get_sess
     return RedirectResponse(f"/ingest?show={show_key}", status_code=303)
 
 
+@router.post("/reparse")
+async def reparse_filenames(request: Request, session: Session = Depends(get_session)):
+    """Re-run filename parsing on needs_review/pending files for a show.
+    Use after adding new classifier patterns to catch previously unparseable filenames.
+    """
+    from ingest.classifier import classify_origin, parse_filename
+    form = await request.form()
+    show_key = (form.get("show_key") or "").strip()
+    if not show_key:
+        return RedirectResponse("/ingest", status_code=303)
+
+    shows = _get_shows(session)
+    show_keys = list(shows.keys())
+
+    files = session.exec(
+        select(IngestFile).where(
+            IngestFile.show_key == show_key,
+            IngestFile.status.in_(["needs_review", "pending"]),
+        )
+    ).all()
+
+    upgraded = 0
+    for f in files:
+        filename = Path(f.file_path).name
+        parse_result = parse_filename(filename, known_show_keys=show_keys, display_names=shows)
+
+        changed = False
+        if parse_result.get("show_key") and f.show_key_confidence in ("none", "filename_fuzzy"):
+            f.show_key = parse_result["show_key"]
+            f.show_key_confidence = parse_result.get("show_key_confidence", "none")
+            changed = True
+        if parse_result.get("air_datetime") and f.air_date_confidence == "none":
+            f.air_datetime = parse_result["air_datetime"]
+            f.air_date_confidence = parse_result.get("air_date_confidence", "none")
+            changed = True
+
+        if changed:
+            has_show = bool(f.show_key)
+            has_date = bool(f.air_datetime)
+            if has_show and has_date:
+                f.status = "matched"
+            session.add(f)
+            upgraded += 1
+
+    session.commit()
+    msg = f"Reparse: {upgraded}/{len(files)} files upgraded for {show_key}"
+    session.add(SystemEvent(severity="info", message=msg))
+    session.commit()
+    logger.info(msg)
+    return RedirectResponse(f"/ingest?show={show_key}", status_code=303)
+
+
 @router.post("/detect-reairs")
 async def detect_reairs_route(request: Request, session: Session = Depends(get_session)):
     from ingest.reair_detector import detect_reairs

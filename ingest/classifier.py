@@ -110,9 +110,33 @@ _TOOLBOX_OLD = re.compile(
     re.IGNORECASE,
 )
 
-# Pattern 4: ShowName YYYY-MM-DD.mp3 or ShowName_YYYY-MM-DD.mp3
+# Pattern 4: ShowName YYYY-MM-DD.mp3 or ShowName_YYYY-MM-DD.mp3 (zero-padded)
 _SHOW_DATE = re.compile(
     r"(.+?)[\s_-]+(\d{4}-\d{2}-\d{2})\.mp3",
+    re.IGNORECASE,
+)
+
+# Pattern 5: showname_YYMMDD_HHMMSS.mp3  (show first, date second — reverse of old toolbox)
+# e.g. unintelligible_260322_010000.mp3
+_SHOW_FIRST_YYMMDD = re.compile(
+    r"(.+?)_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.mp3",
+    re.IGNORECASE,
+)
+
+# Pattern 6: ShowName - YYYY-MM-DD description.mp3  (space-dash-space separator)
+# e.g. Unintelligible - 2024-04-13 Vaski-edIT-Mashups.mp3
+_SHOW_DASH_DATE_DESC = re.compile(
+    r"(.+?)\s+-\s+(\d{4}-\d{1,2}-\d{1,2})(?:\s+.+)?\.mp3",
+    re.IGNORECASE,
+)
+
+# Pattern 7: ShowName-YYYY-M-D-description.mp3  (all dashes, non-padded month/day ok)
+# Also handles WDBX-ShowName-YYYY-MM-DD-... prefix
+# e.g. Unintelligible-2025-1-11-SATURATE-Mashups.mp3
+#      WDBX-Unintelligible-2023-11-25-BeatsAntique.mp3
+#      unintelligible-2023-05-20-prerecorded.mp3
+_SHOW_HYPHEN_DATE = re.compile(
+    r"(?:WDBX-)?(.+?)-(\d{4}-\d{1,2}-\d{1,2})(?:-.+)?\.mp3",
     re.IGNORECASE,
 )
 
@@ -160,6 +184,17 @@ def _yymmdd_to_date(yy: str, mm: str, dd: str) -> datetime | None:
     try:
         year = 2000 + int(yy)
         return datetime(year, int(mm), int(dd))
+    except ValueError:
+        return None
+
+
+def _iso_to_date(date_str: str) -> datetime | None:
+    """Parse YYYY-MM-DD or YYYY-M-D (non-padded) to datetime. Returns None on invalid date."""
+    parts = date_str.split("-")
+    if len(parts) != 3:
+        return None
+    try:
+        return datetime(int(parts[0]), int(parts[1]), int(parts[2]))
     except ValueError:
         return None
 
@@ -238,6 +273,52 @@ def parse_filename(
             result["show_key"] = show_key
             result["show_key_confidence"] = conf
         return result
+
+    # Pattern 5: showname_YYMMDD_HHMMSS.mp3
+    m = _SHOW_FIRST_YYMMDD.match(filename)
+    if m:
+        name, yy, mo, dd, hh, mi, ss = m.groups()
+        air_dt = _yymmdd_to_date(yy, mo, dd)
+        if air_dt:
+            air_dt = air_dt.replace(hour=int(hh), minute=int(mi), second=int(ss))
+            result["air_datetime"] = air_dt
+            result["air_date_confidence"] = "filename"
+        show_key, conf = _match_show(name, known_show_keys, display_names)
+        if show_key:
+            result["show_key"] = show_key
+            result["show_key_confidence"] = conf
+        if result.get("air_datetime") or result.get("show_key"):
+            return result
+
+    # Pattern 6: ShowName - YYYY-MM-DD description.mp3
+    m = _SHOW_DASH_DATE_DESC.match(filename)
+    if m:
+        name, date_str = m.groups()
+        air_dt = _iso_to_date(date_str)
+        if air_dt:
+            result["air_datetime"] = air_dt
+            result["air_date_confidence"] = "filename"
+        show_key, conf = _match_show(name, known_show_keys, display_names)
+        if show_key:
+            result["show_key"] = show_key
+            result["show_key_confidence"] = conf
+        if result.get("air_datetime") or result.get("show_key"):
+            return result
+
+    # Pattern 7: ShowName-YYYY-M-D-description.mp3  (all-hyphen, non-padded ok)
+    m = _SHOW_HYPHEN_DATE.match(filename)
+    if m:
+        name, date_str = m.groups()
+        air_dt = _iso_to_date(date_str)
+        if air_dt:
+            result["air_datetime"] = air_dt
+            result["air_date_confidence"] = "filename"
+        show_key, conf = _match_show(name, known_show_keys, display_names)
+        if show_key:
+            result["show_key"] = show_key
+            result["show_key_confidence"] = conf
+        if result.get("air_datetime") or result.get("show_key"):
+            return result
 
     # No pattern matched — try show match on full stem
     stem = Path(filename).stem
