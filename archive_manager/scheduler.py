@@ -21,7 +21,7 @@ from archive_manager.schedule_scraper import sync_gone_shows, sync_new_shows
 from archive_manager.scraper import sync_episodes
 from shared.config import get
 from shared.database import get_engine
-from shared.models import Episode, SystemEvent
+from shared.models import AnalysisResult, Episode, IngestFile, SystemEvent
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,96 @@ def _download_job() -> None:
             download_episode(episode, session)
 
 
+def _segment_fingerprint_job() -> None:
+    """Overnight job: fingerprint a batch of unfingerprinted IngestFiles."""
+    from ingest.fingerprinter import fingerprint_file
+    from pathlib import Path
+    BATCH = 20
+    logger.info("Segment fingerprint job started (batch=%d)", BATCH)
+    try:
+        with Session(get_engine()) as session:
+            files = session.exec(
+                select(IngestFile).where(
+                    IngestFile.fingerprint == None,
+                    IngestFile.status.in_(["matched", "canonical"]),
+                )
+                .limit(BATCH)
+            ).all()
+            done = 0
+            for f in files:
+                fp, dur = fingerprint_file(Path(f.file_path))
+                if fp:
+                    f.fingerprint = fp
+                    f.fingerprint_duration = dur
+                    session.add(f)
+                    done += 1
+            session.commit()
+            logger.info("Fingerprint job: %d/%d files processed", done, len(files))
+    except Exception as e:
+        logger.error("Fingerprint job failed: %s", e)
+
+
+def _reair_detection_job() -> None:
+    """Overnight job: detect re-air chains for all shows with fingerprinted files."""
+    from ingest.reair_detector import detect_reairs
+    from sqlmodel import distinct
+    logger.info("Re-air detection job started")
+    try:
+        with Session(get_engine()) as session:
+            # Find distinct show_keys that have fingerprinted files
+            show_keys = session.exec(
+                select(distinct(IngestFile.show_key)).where(
+                    IngestFile.fingerprint != None,
+                    IngestFile.show_key != None,
+                )
+            ).all()
+            total = {"marked_reair": 0, "gray_zone": 0, "compared": 0}
+            for show_key in show_keys:
+                counts = detect_reairs(session, show_key)
+                for k in total:
+                    total[k] += counts.get(k, 0)
+            logger.info("Re-air detection complete: %s", total)
+    except Exception as e:
+        logger.error("Re-air detection job failed: %s", e)
+
+
+def _analysis_job() -> None:
+    """Overnight job: run analysis on downloaded episodes that haven't been analyzed yet."""
+    from processor.analyzer import analyze_episode, ANALYSIS_VERSION
+    BATCH = 5   # analysis is slow; small batch, run nightly
+    logger.info("Analysis job started (batch=%d)", BATCH)
+    try:
+        with Session(get_engine()) as session:
+            # Find downloaded episodes with no analysis result
+            analyzed_ids = session.exec(
+                select(AnalysisResult.episode_id).where(
+                    AnalysisResult.analysis_version == ANALYSIS_VERSION
+                )
+            ).all()
+            analyzed_id_list = list(set(analyzed_ids))
+            if analyzed_id_list:
+                episodes = session.exec(
+                    select(Episode).where(
+                        Episode.status == "downloaded",
+                        Episode.id.not_in(analyzed_id_list),
+                    ).limit(BATCH)
+                ).all()
+            else:
+                episodes = session.exec(
+                    select(Episode).where(
+                        Episode.status == "downloaded",
+                    ).limit(BATCH)
+                ).all()
+            done = 0
+            for ep in episodes:
+                result = analyze_episode(ep, session)
+                if result:
+                    done += 1
+            logger.info("Analysis job: %d/%d episodes processed", done, len(episodes))
+    except Exception as e:
+        logger.error("Analysis job failed: %s", e)
+
+
 def get_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is None:
@@ -120,8 +210,12 @@ def get_scheduler() -> BackgroundScheduler:
         _scheduler.add_job(_scrape_job, "interval", hours=scrape_interval, id="archive_scrape")
         _scheduler.add_job(_download_job, "interval", hours=1, id="archive_download")
         _scheduler.add_job(_schedule_sync_job, "interval", hours=schedule_sync_interval, id="schedule_sync")
+        _scheduler.add_job(_segment_fingerprint_job, "cron", hour=2, minute=0, id="segment_fingerprint")
+        _scheduler.add_job(_reair_detection_job, "cron", hour=3, minute=0, id="reair_detection")
+        _scheduler.add_job(_analysis_job, "cron", hour=4, minute=0, id="episode_analysis")
         logger.info(
-            "Scheduler configured: scrape every %dh, download check every 1h, schedule sync every %dh",
+            "Scheduler configured: scrape every %dh, download check every 1h, schedule sync every %dh, "
+            "fingerprint@2am, reair@3am, analysis@4am",
             scrape_interval, schedule_sync_interval,
         )
     return _scheduler

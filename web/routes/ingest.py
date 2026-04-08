@@ -23,6 +23,8 @@ from ingest.crawler import crawl_directory
 from shared.database import get_session
 from shared.models import CanonicalEpisode, IngestFile, Show, SystemEvent
 
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ingest")
 _templates_dir = Path(__file__).parent.parent / "templates"
@@ -378,4 +380,20 @@ async def fingerprint_show(request: Request, session: Session = Depends(get_sess
     session.commit()
     logger.info(msg)
 
+    return RedirectResponse(f"/ingest?show={show_key}", status_code=303)
+
+
+@router.post("/detect-reairs")
+async def detect_reairs_route(request: Request, session: Session = Depends(get_session)):
+    from ingest.reair_detector import detect_reairs
+    form = await request.form()
+    show_key = (form.get("show_key") or "").strip()
+    if not show_key:
+        return RedirectResponse("/ingest", status_code=303)
+    counts = detect_reairs(session, show_key)
+    msg = (f"Re-air detection for {show_key}: "
+           f"{counts['marked_reair']} marked, {counts['gray_zone']} gray zone, "
+           f"{counts['compared']} compared")
+    session.add(SystemEvent(severity="info", message=msg))
+    session.commit()
     return RedirectResponse(f"/ingest?show={show_key}", status_code=303)

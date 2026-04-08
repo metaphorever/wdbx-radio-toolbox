@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Processor — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">← Home</a>
+      <h1 class="text-xl font-bold tracking-wide">Processor</h1>
+    </div>
+    <span class="text-xs text-gray-500">Analysis — Phase 5 · v{{ analysis_version }}</span>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-10">
+
+    {# ── Analysis queue ──────────────────────────────────────────── #}
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Analysis Queue</h2>
+        <span class="text-sm text-gray-400">
+          <span class="font-bold {% if pending_count > 0 %}text-yellow-400{% else %}text-green-400{% endif %}">
+            {{ pending_count }}
+          </span>
+          episode{{ 's' if pending_count != 1 else '' }} awaiting analysis
+        </span>
+      </div>
+
+      <div class="rounded border border-gray-800 bg-gray-900/50 px-5 py-4">
+        <form action="/processor/analyze" method="post"
+          class="flex flex-wrap items-end gap-4">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Show</label>
+            <select name="show_key" required
+              class="bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                     focus:border-indigo-500 focus:outline-none text-gray-200">
+              <option value="">— select show —</option>
+              {% for s in shows %}
+              <option value="{{ s.show_key }}"
+                {% if s.show_key == selected_show %}selected{% endif %}>
+                {{ s.display_name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1">Episodes (limit)</label>
+            <input type="number" name="limit" value="5" min="1" max="50"
+              class="w-24 bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm
+                     focus:border-indigo-500 focus:outline-none text-gray-200">
+          </div>
+          <button type="submit"
+            class="px-5 py-2 rounded bg-indigo-700 hover:bg-indigo-600 transition font-semibold text-sm">
+            Run Analysis
+          </button>
+          <span class="text-xs text-gray-600 self-end pb-2">
+            EAS ~5-10s/file · Segment fingerprinting ~6-12min/file.
+            Overnight batch of 5 runs automatically at 4am.
+          </span>
+        </form>
+      </div>
+
+      {# Show filter #}
+      <form method="get" action="/processor" class="flex items-center gap-3">
+        <select name="show"
+          class="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm
+                 focus:border-indigo-500 focus:outline-none text-gray-200">
+          <option value="">— all shows —</option>
+          {% for s in shows %}
+          <option value="{{ s.show_key }}" {% if s.show_key == selected_show %}selected{% endif %}>
+            {{ s.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit"
+          class="px-4 py-2 rounded border border-gray-700 hover:border-indigo-500
+                 text-sm text-gray-300 hover:text-gray-100 transition">
+          Filter
+        </button>
+      </form>
+    </section>
+
+    {# ── Recent results ──────────────────────────────────────────── #}
+    {% if recent_results %}
+    <section class="space-y-3">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">
+        Recent Results
+        <span class="text-gray-700 font-normal normal-case ml-1">({{ recent_results|length }})</span>
+      </h2>
+      <div class="rounded border border-gray-800 overflow-hidden">
+        <table class="w-full text-xs">
+          <thead class="bg-gray-900 text-gray-500 uppercase tracking-wider">
+            <tr>
+              <th class="px-3 py-2 text-left">Show</th>
+              <th class="px-3 py-2 text-left">Air date</th>
+              <th class="px-3 py-2 text-center">EAS</th>
+              <th class="px-3 py-2 text-center">Underwriting</th>
+              <th class="px-3 py-2 text-center">Score</th>
+              <th class="px-3 py-2 text-left">Flags</th>
+              <th class="px-3 py-2 text-left">Analyzed</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-800/60">
+            {% for row in recent_results %}
+            {% set r = row.result %}
+            {% set ep = row.episode %}
+            <tr class="hover:bg-gray-900/40 {% if r.eas_detected %}bg-red-950/10{% endif %}">
+              <td class="px-3 py-2 text-gray-300">{{ ep.show_key }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ ep.air_datetime.strftime("%Y-%m-%d") }}</td>
+              <td class="px-3 py-2 text-center">
+                {% if r.eas_detected %}
+                  <span class="text-red-400 font-bold">YES</span>
+                {% else %}
+                  <span class="text-gray-700">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-center">
+                {% if r.underwriting_match_timestamps %}
+                  {% set uw_list = r.underwriting_match_timestamps | fromjson %}
+                  <span class="text-yellow-500">
+                    {{ uw_list | length }} match{{ 'es' if uw_list | length != 1 else '' }}
+                  </span>
+                {% else %}
+                  <span class="text-gray-700">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-center font-bold">
+                {% if r.evergreen_score is not none %}
+                  <span class="{% if r.evergreen_score >= 80 %}text-green-400
+                                {% elif r.evergreen_score >= 50 %}text-yellow-400
+                                {% else %}text-red-400{% endif %}">
+                    {{ r.evergreen_score }}
+                  </span>
+                {% else %}
+                  <span class="text-gray-700">—</span>
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-600">
+                {% if r.quality_flags %}
+                  {% for flag in (r.quality_flags | fromjson) %}
+                    <span class="inline-block px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 mr-1">
+                      {{ flag }}
+                    </span>
+                  {% endfor %}
+                {% endif %}
+              </td>
+              <td class="px-3 py-2 text-gray-700">{{ r.analyzed_at.strftime("%m-%d %H:%M") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% else %}
+    <div class="text-center py-12 text-gray-700 text-sm">
+      No analysis results yet. Run analysis above to get started.
+    </div>
+    {% endif %}
+
+    {# ── Segment library stats ───────────────────────────────────── #}
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Segment Library</h2>
+        <a href="/processor/segments"
+          class="text-xs text-gray-600 hover:text-gray-400 transition">
+          Browse &amp; classify →
+        </a>
+      </div>
+      <div class="grid grid-cols-4 sm:grid-cols-8 gap-2">
+        {% set cls_colors = {
+          "underwriting": "text-red-400",
+          "theme": "text-purple-400",
+          "station_id": "text-blue-400",
+          "promo": "text-indigo-400",
+          "safelist": "text-green-400",
+          "unknown": "text-gray-500",
+          "pending_review": "text-yellow-400"
+        } %}
+        {% for cls, count in seg_by_class.items() %}
+        <a href="/processor/segments?cls={{ cls }}"
+          class="rounded border border-gray-800 bg-gray-900/50 px-3 py-3 text-center
+                 hover:border-gray-600 transition block">
+          <div class="text-base font-bold {{ cls_colors.get(cls, 'text-gray-400') }}">{{ count }}</div>
+          <div class="text-xs text-gray-600 mt-0.5 leading-tight">{{ cls.replace('_', ' ') }}</div>
+        </a>
+        {% endfor %}
+        <div class="rounded border border-gray-800 bg-gray-900/50 px-3 py-3 text-center">
+          <div class="text-base font-bold text-gray-400">{{ seg_total }}</div>
+          <div class="text-xs text-gray-600 mt-0.5">total</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</body>
+</html>

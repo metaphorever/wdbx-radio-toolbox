@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Segments — WDBX</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
+  <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/processor" class="text-gray-500 hover:text-gray-300 text-sm">← Processor</a>
+      <h1 class="text-xl font-bold tracking-wide">Segments</h1>
+    </div>
+    <span class="text-xs text-gray-500">{{ total }} in {{ selected_cls.replace('_', ' ') }}</span>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+
+    {# Classification filter tabs #}
+    <div class="flex flex-wrap gap-2">
+      {% for cls in classifications %}
+      <a href="/processor/segments?cls={{ cls }}"
+        class="px-3 py-1.5 rounded text-xs border transition
+               {% if cls == selected_cls %}
+                 border-indigo-600 text-indigo-300 bg-indigo-950/30
+               {% else %}
+                 border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300
+               {% endif %}">
+        {{ cls.replace('_', ' ') }}
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if segments %}
+    <div class="rounded border border-gray-800 overflow-hidden">
+      <table class="w-full text-xs">
+        <thead class="bg-gray-900 text-gray-500 uppercase tracking-wider">
+          <tr>
+            <th class="px-3 py-2 text-left">Hash</th>
+            <th class="px-3 py-2 text-left">Duration</th>
+            <th class="px-3 py-2 text-left">First show</th>
+            <th class="px-3 py-2 text-center">Seen</th>
+            <th class="px-3 py-2 text-center">Cross-show</th>
+            <th class="px-3 py-2 text-left">Confirmed by</th>
+            <th class="px-3 py-2 text-right">Classify</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-800/60">
+          {% for seg in segments %}
+          <tr class="hover:bg-gray-900/40">
+            <td class="px-3 py-2 text-gray-600">{{ seg.fingerprint_hash[:16] }}…</td>
+            <td class="px-3 py-2 text-gray-400">
+              {{ "%d:%02d"|format((seg.duration_sec // 60)|int, (seg.duration_sec % 60)|int) }}
+            </td>
+            <td class="px-3 py-2 text-gray-500">{{ seg.first_seen_show_key }}</td>
+            <td class="px-3 py-2 text-center text-gray-300">{{ seg.occurrence_count }}</td>
+            <td class="px-3 py-2 text-center
+              {% if seg.cross_show_count > 0 %}text-yellow-500{% else %}text-gray-700{% endif %}">
+              {{ seg.cross_show_count }}
+            </td>
+            <td class="px-3 py-2 text-gray-700">{{ seg.confirmed_by or "—" }}</td>
+            <td class="px-3 py-2 text-right">
+              <form action="/processor/segments/{{ seg.fingerprint_hash }}/classify"
+                method="post" class="flex items-center justify-end gap-2">
+                <input type="hidden" name="redirect_cls" value="{{ selected_cls }}">
+                <select name="classification"
+                  class="bg-gray-950 border border-gray-700 rounded px-2 py-1 text-xs
+                         focus:border-indigo-500 focus:outline-none text-gray-200">
+                  {% for cls in classifications %}
+                  <option value="{{ cls }}"
+                    {% if cls == seg.classification %}selected{% endif %}>
+                    {{ cls.replace('_', ' ') }}
+                  </option>
+                  {% endfor %}
+                </select>
+                <button type="submit"
+                  class="px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 transition text-gray-300">
+                  Save
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Pagination #}
+    <div class="flex items-center gap-4 text-xs text-gray-600">
+      {% if offset > 0 %}
+      <a href="/processor/segments?cls={{ selected_cls }}&offset={{ prev_offset }}"
+        class="hover:text-gray-400 transition">← Prev</a>
+      {% endif %}
+      <span>{{ offset + 1 }}–{{ [offset + page_size, total] | min }} of {{ total }}</span>
+      {% if next_offset < total %}
+      <a href="/processor/segments?cls={{ selected_cls }}&offset={{ next_offset }}"
+        class="hover:text-gray-400 transition">Next →</a>
+      {% endif %}
+    </div>
+
+    {% else %}
+    <div class="text-center py-16 text-gray-700">
+      No segments classified as "{{ selected_cls.replace('_', ' ') }}" yet.
+    </div>
+    {% endif %}
+
+  </main>
+</body>
+</html>

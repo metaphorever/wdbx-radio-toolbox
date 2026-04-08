@@ -131,6 +131,14 @@
             Fingerprint Show
           </button>
         </form>
+        <form action="/ingest/detect-reairs" method="post" class="inline">
+          <input type="hidden" name="show_key" value="{{ selected_show }}">
+          <button type="submit"
+            class="px-4 py-1.5 rounded border border-gray-700 hover:border-purple-600
+                   text-gray-400 hover:text-purple-400 transition text-xs">
+            Detect Re-airs
+          </button>
+        </form>
         <a href="/ingest/timeline/{{ selected_show }}"
           class="px-4 py-1.5 rounded border border-gray-700 hover:border-violet-600
                  text-gray-400 hover:text-violet-400 transition text-xs">

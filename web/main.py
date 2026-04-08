@@ -1,3 +1,4 @@
+import json as _json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -12,6 +13,7 @@ from web.routes.ingest import router as ingest_router
 from web.routes.ingest_timeline import router as ingest_timeline_router
 from web.routes.library import router as library_router
 from web.routes.onboarding import router as onboarding_router
+from web.routes.processor import router as processor_router
 from web.routes.settings import router as settings_router
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -25,12 +27,13 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="WDBX Radio Toolbox", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="WDBX Radio Toolbox", version="0.5.0", lifespan=lifespan)
 app.include_router(archive_router)
 app.include_router(ingest_router)
 app.include_router(ingest_timeline_router)
 app.include_router(library_router)
 app.include_router(onboarding_router)
+app.include_router(processor_router)
 app.include_router(settings_router)
 
 # Use cache_size=0 to bypass Jinja2's LRUCache, which has a thread-safety
@@ -41,12 +44,13 @@ _jinja_env = jinja2.Environment(
     auto_reload=True,
     cache_size=0,
 )
+_jinja_env.filters["fromjson"] = _json.loads
 templates = Jinja2Templates(env=_jinja_env)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.4.0"}
+    return {"status": "ok", "version": "0.5.0"}
 
 
 @app.get("/", response_class=HTMLResponse)
