@@ -1,4 +1,6 @@
 import json as _json
+import logging
+import logging.handlers
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -7,7 +9,29 @@ from pathlib import Path
 import jinja2
 
 from archive_manager.scheduler import start_scheduler, stop_scheduler
+from shared.config import get
 from shared.database import create_db_and_tables
+
+
+def _setup_logging() -> None:
+    log_file = get("logging.file", "")
+    level = getattr(logging, get("logging.level", "INFO").upper(), logging.INFO)
+    max_bytes = int(get("logging.max_bytes", 10 * 1024 * 1024))
+    backup_count = int(get("logging.backup_count", 5))
+
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    if log_file:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.handlers.RotatingFileHandler(
+            log_file, maxBytes=max_bytes, backupCount=backup_count
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        root.addHandler(handler)
+
+
+_setup_logging()
 from web.routes.archive import router as archive_router
 from web.routes.ingest import router as ingest_router
 from web.routes.ingest_timeline import router as ingest_timeline_router
