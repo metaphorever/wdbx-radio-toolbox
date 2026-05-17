@@ -37,14 +37,15 @@ def send_alert(subject: str, body: str) -> bool:
     msg = MIMEText(body)
     msg["Subject"] = f"[WDBX Toolbox] {subject}"
     msg["From"] = from_addr
-    msg["To"] = to_addr
+    recipients = [a.strip() for a in to_addr.split(",") if a.strip()]
+    msg["To"] = ", ".join(recipients)
 
     try:
         with smtplib.SMTP(host, port, timeout=15) as smtp:
             smtp.starttls()
             if user and password:
                 smtp.login(user, password)
-            smtp.sendmail(from_addr, [to_addr], msg.as_string())
+            smtp.sendmail(from_addr, recipients, msg.as_string())
         logger.info("Alert sent: %s", subject)
         return True
     except Exception as e:
