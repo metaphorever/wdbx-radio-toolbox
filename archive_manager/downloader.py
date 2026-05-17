@@ -39,6 +39,10 @@ def _download_file(url: str, dest: Path) -> bool:
                 for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
                     f.write(chunk)
             size = dest.stat().st_size
+            if size == 0:
+                logger.warning("0-byte file from %s — treating as failed", url)
+                dest.unlink()
+                raise ValueError("0-byte response")
             logger.info("Saved %s (%s bytes)", dest.name, f"{size:,}")
             return True
         except Exception as e:

@@ -98,6 +98,7 @@ def _download_job() -> None:
         _nas_alert_sent = False   # reset so we alert again if it goes down again
 
     with Session(get_engine()) as session:
+        now = datetime.utcnow()
         pending = session.exec(
             select(Episode).where(
                 Episode.status == "pending",
@@ -105,9 +106,19 @@ def _download_job() -> None:
             ).order_by(Episode.expires_at.is_(None), Episode.expires_at)
         ).all()
 
-        if pending:
-            logger.info("Download job: processing %d pending episode(s)", len(pending))
-        for episode in pending:
+        # Skip episodes whose expiry has passed — Pacifica will 404 them.
+        expired = [e for e in pending if e.expires_at and e.expires_at < now]
+        for e in expired:
+            e.status = "expired"
+            session.add(e)
+            logger.info("Skipping expired episode: %s %s", e.show_key, e.air_datetime.strftime("%Y-%m-%d"))
+        if expired:
+            session.commit()
+
+        downloadable = [e for e in pending if not (e.expires_at and e.expires_at < now)]
+        if downloadable:
+            logger.info("Download job: processing %d pending episode(s)", len(downloadable))
+        for episode in downloadable:
             download_episode(episode, session)
 
 
@@ -201,6 +212,24 @@ def _analysis_job() -> None:
         logger.error("Analysis job failed: %s", e)
 
 
+def _heartbeat_job() -> None:
+    """Ping the healthchecks.io URL to signal the app is alive.
+
+    If this ping stops arriving, healthchecks.io emails the station manager.
+    This catches failures that SMTP-from-inside-app cannot: app crash, hung
+    process, broken SMTP config, etc.
+    """
+    url = get("monitoring.heartbeat_url", "")
+    if not url:
+        return
+    try:
+        import requests as _requests
+        _requests.get(url, timeout=10)
+        logger.debug("Heartbeat ping sent")
+    except Exception as e:
+        logger.warning("Heartbeat ping failed: %s", e)
+
+
 def get_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is None:
@@ -210,12 +239,13 @@ def get_scheduler() -> BackgroundScheduler:
         _scheduler.add_job(_scrape_job, "interval", hours=scrape_interval, id="archive_scrape")
         _scheduler.add_job(_download_job, "interval", hours=1, id="archive_download")
         _scheduler.add_job(_schedule_sync_job, "interval", hours=schedule_sync_interval, id="schedule_sync")
+        _scheduler.add_job(_heartbeat_job, "interval", minutes=15, id="heartbeat")
         _scheduler.add_job(_segment_fingerprint_job, "cron", hour=2, minute=0, id="segment_fingerprint")
         _scheduler.add_job(_reair_detection_job, "cron", hour=3, minute=0, id="reair_detection")
         _scheduler.add_job(_analysis_job, "cron", hour=4, minute=0, id="episode_analysis")
         logger.info(
             "Scheduler configured: scrape every %dh, download check every 1h, schedule sync every %dh, "
-            "fingerprint@2am, reair@3am, analysis@4am",
+            "heartbeat every 15m, fingerprint@2am, reair@3am, analysis@4am",
             scrape_interval, schedule_sync_interval,
         )
     return _scheduler

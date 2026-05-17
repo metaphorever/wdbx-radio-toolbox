@@ -26,13 +26,40 @@ def sanitize_show_name(display_name: str) -> str:
     return name
 
 
+def _is_network_mount(mount_path: str) -> bool:
+    """Return True if `mount_path` is an active mount of a network filesystem.
+
+    Without this, a write probe to an *unmounted* mountpoint succeeds against
+    the underlying local filesystem — the app thinks the NAS is healthy while
+    silently writing to root disk.
+    """
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                _, target, fstype = parts[0], parts[1], parts[2]
+                if target == mount_path and fstype in {"cifs", "smb3", "nfs", "nfs4", "fuse.smbnetfs"}:
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def nas_is_writable() -> bool:
-    """Return True if the NAS archive path exists and accepts a write probe."""
+    """Return True if the NAS is actually mounted (not just an empty mountpoint)
+    AND the archive path accepts a write probe.
+    """
     mount = get("nas.mount_point", "/mnt/wdbx-share")
     archive_path = get("nas.archive_path", "/mnt/wdbx-share/Shows/AutoArchive")
 
     if not Path(mount).exists():
         logger.error("NAS mount point does not exist: %s", mount)
+        return False
+
+    if not _is_network_mount(mount):
+        logger.error("NAS mountpoint %s is not an active network mount — refusing write probe", mount)
         return False
 
     try:
