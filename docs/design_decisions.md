@@ -31,7 +31,7 @@ Confidence levels: **Hard Requirement**, **Strong Recommendation**, **Provisiona
 | ID | Decision | Source | Confidence |
 |----|----------|--------|------------|
 | IN-01 | Primary service host is one of the Ubuntu streaming PCs | Joint | Provisional |
-| IN-02 | Fix NAS mount using systemd automount unit as Phase 0 task | Architect | Strong Recommendation |
+| IN-02 | NAS mount via `/etc/fstab` CIFS entry with `vers=3.1.1,_netdev,nofail` | Architect | **Resolved 2026-05-17** — systemd automount unit not needed; fstab with nofail is sufficient. Iomega px6-300d requires SMB signing disabled in NAS admin UI (kernel CIFS 6.8 signature verification incompatibility). See ops_runbook.md §3.1. |
 | IN-03 | Downloads route to local staging queue if NAS is unreachable | Joint | Hard Requirement |
 | IN-04 | Email via SMTP is the notification channel | Joint | Strong Recommendation |
 | IN-05 | NAS capability for running Python services is an open question (Iomega StorCenter px6-300d) | Open | Open Question |
@@ -124,11 +124,11 @@ Confidence levels: **Hard Requirement**, **Strong Recommendation**, **Provisiona
 
 | ID | Question | Status |
 |----|----------|--------|
-| Q1 | NAS Capability: Does Iomega StorCenter px6-300d support persistent Python service? | Open |
+| Q1 | NAS Capability: Does Iomega StorCenter px6-300d support persistent Python service? | **Resolved 2026-05-17** — No. Service runs on Ubuntu streaming PC. NAS is storage-only. |
 | Q2 | Pacifica API: Check DevTools Network tab at archive.wdbx.org for undocumented JSON API | Open |
 | Q3 | MP3 URL structure | **Resolved 2026-03-23**: `wdbx_{YYMMDD}_{HHMMSS}{slug}.mp3` — no underscore between time and slug. Example: `wdbx_260205_070000islandreport.mp3` |
 | Q4 | Padding Music Library: Does station manager have existing licensed/owned music? | Open |
 | Q5 | Existing Python Script | **Resolved**: `reference/dl-toggle.py` + `reference/showst.txt` added to repo |
-| Q6 | SMTP credentials / Pacifica documentation | Open |
+| Q6 | SMTP credentials / Pacifica documentation | **Resolved 2026-05-17** — SMTP via DreamHost (`smtp.dreamhost.com:587`), account `monitoring@wdbx.org`. Credentials in `config.local.yaml` on server. Two recipients configured. |
 
 *Update this table as questions are resolved. Bump doc to v1.1 when all are closed.*
