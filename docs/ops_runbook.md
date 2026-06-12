@@ -46,10 +46,11 @@ The Iomega px6-300d required SMB packet signing. Linux kernel 6.8 CIFS client (v
 
 **If the NAS stops mounting after a firmware update:** Check `dmesg | grep -i cifs` for `sign fail`. If it returns, SMB signing got re-enabled on the NAS (some firmware updates reset this). Log into the NAS admin UI and disable it again.
 
-**fstab entry:**
+**fstab entry** (as of 2026-06-12, includes automount so the mount self-heals after NAS outages — with plain `nofail` the mount was only attempted once at boot and never retried, which caused the June 10–12 silent outage):
 ```
-//192.168.2.185/Add\040to\040Share  /mnt/wdbx-share  cifs  credentials=/etc/samba/wdbx-nas.creds,uid=wdbx,gid=wdbx,iocharset=utf8,vers=3.1.1,_netdev,nofail  0  0
+//192.168.2.185/Add\040to\040Share  /mnt/wdbx-share  cifs  credentials=/etc/samba/wdbx-nas.creds,uid=wdbx,gid=wdbx,iocharset=utf8,vers=3.1.1,_netdev,nofail,x-systemd.automount,x-systemd.mount-timeout=30  0  0
 ```
+With the automount, any access to `/mnt/wdbx-share` mounts the share on demand (30 s timeout if the NAS is down, then the app falls back to local staging as before). `mount | grep wdbx-share` shows an `autofs` line always, plus a `cifs` line when actually mounted.
 
 ### 3.2 NAS Credentials
 - Auth user: `rsync`
@@ -164,7 +165,7 @@ Full audit and merge of duplicate content across the NAS:
 6. Schedule backups of canonical archive to secondary storage
 
 ### 7.3 Pacifica Archive Retention Window
-Most shows: 30 days. The Groove (groove): 14 days — shorter than typical, monitor. Some talk/public-domain shows: 46–59 days or permanent. Check `expires_at` in the DB if uncertain.
+Most shows: 30 days. **14-day shows (short window — these are the first casualties of any prolonged outage):** The Groove (groove), The Show (theshow), The Imposter (imposter), Sat Morning Gospel (satmorningospel) — confirmed via `expires_at` during the 2026-06-12 incident, where all three Saturday 14-day shows from May 16 were lost. Some talk/public-domain shows: 46–59 days or permanent. Check `expires_at` in the DB if uncertain.
 
 ---
 
@@ -228,3 +229,5 @@ mount | grep wdbx-share
 | 2026-05-17 | Expired episodes retried indefinitely | Download job didn't filter by `expires_at` | Skip and mark `expired` when `expires_at < now` |
 | 2026-05-17 | No alerting during outage | SMTP not configured; heartbeat not implemented | Configured DreamHost SMTP + healthchecks.io heartbeat |
 | 2026-05-17 | Log file never written | `_setup_logging()` not called at startup | Wired up in `web/main.py` |
+| 2026-06-12 | Bulk NAS copy wrote ~170 episodes to `/mnt/wdbx-share/wdbx-share/Shows/…` (doubled segment) | `nas.archive_path` had been saved with a copy-paste typo via the Settings UI; `mkdir(parents=True)` silently created the wrong tree. Also: 3 episode rows had `smb://`-style `local_path` values that crashed the copy loop | Fixed config + restarted; server-side `mv` of misplaced files into the real tree; SQL `REPLACE()` to repair `nas_path`. The 3 smb rows (The Show, The Imposter, Sat Morning Gospel — all 2026-05-16) had no file anywhere and had already expired on Pacifica May 30 (14-day retention) — **those 3 episodes are lost**. Follow-up: validate NAS paths on save in Settings UI |
+| 2026-06-10→12 | NAS unreachable for 2 days after power outage | Power outage June 10; the NAS recovered but the Ubuntu box's CIFS mount did not — `nofail` mounts only once at boot and never retries. Single NAS-down alert was sent June 10 and assumed transient; staging failsafe masked the ongoing outage | `sudo mount -a` on June 12; bulk-copied staged episodes to NAS. Prevention: `x-systemd.automount` added to fstab 2026-06-12 (mount now self-heals — see §3.1); still TODO: make NAS alert repeat daily during prolonged outages (one-shot as of this incident) |
