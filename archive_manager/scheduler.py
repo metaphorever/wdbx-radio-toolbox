@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
 from archive_manager.downloader import download_episode
 from archive_manager.mailer import send_alert
@@ -27,9 +27,23 @@ logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
 
-# Track whether we've already emitted a NAS-unreachable event this cycle
-# so we don't spam the event log on every hourly run.
-_nas_alert_sent = False
+# NAS alert state. While the NAS stays unwritable the email re-sends every
+# _NAS_ALERT_INTERVAL (a one-shot flag meant a multi-day outage produced a
+# single easy-to-miss email). Both reset to None once the mount recovers.
+_nas_alert_last_sent: datetime | None = None
+_nas_outage_started: datetime | None = None
+_NAS_ALERT_INTERVAL = timedelta(hours=24)
+
+
+def _format_outage_duration(delta: timedelta) -> str:
+    """Human-readable duration for alert emails, e.g. '2 days, 3 hours'."""
+    total_hours = int(delta.total_seconds() // 3600)
+    days, hours = divmod(total_hours, 24)
+    if days:
+        return f"{days} day{'s' if days != 1 else ''}, {hours} hour{'s' if hours != 1 else ''}"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return "less than an hour"
 
 
 def _scrape_job() -> None:
@@ -66,36 +80,60 @@ def _schedule_sync_job() -> None:
 
 
 def _download_job() -> None:
-    global _nas_alert_sent
+    global _nas_alert_last_sent, _nas_outage_started
 
     delay_hours = int(get("pacifica.download_delay_hours", 24))
     cutoff = datetime.utcnow() - timedelta(hours=delay_hours)
 
-    # NAS health check — emit one event and one email per outage
+    # NAS health check — alert on first failure, re-alert every 24h while the
+    # outage persists, and send a one-time recovery email when it comes back
     nas_ok = nas_is_writable()
-    if not nas_ok and not _nas_alert_sent:
-        with Session(get_engine()) as session:
-            # Only add an event if there isn't an unresolved one
-            existing = session.exec(
-                select(SystemEvent).where(
-                    SystemEvent.severity == "warning",
-                    SystemEvent.resolved_at == None,
-                )
-            ).first()
-            if not existing:
-                session.add(SystemEvent(
-                    severity="warning",
-                    message="NAS unreachable — downloads routing to local staging",
-                ))
-                session.commit()
+    now = datetime.utcnow()
+    if not nas_ok:
+        if _nas_outage_started is None:
+            _nas_outage_started = now
+        if _nas_alert_last_sent is None or now - _nas_alert_last_sent >= _NAS_ALERT_INTERVAL:
+            with Session(get_engine()) as session:
+                # Only add an event if there isn't an unresolved one
+                existing = session.exec(
+                    select(SystemEvent).where(
+                        SystemEvent.severity == "warning",
+                        SystemEvent.resolved_at == None,
+                    )
+                ).first()
+                if not existing:
+                    session.add(SystemEvent(
+                        severity="warning",
+                        message="NAS unreachable — downloads routing to local staging",
+                    ))
+                    session.commit()
+                stranded = len(session.exec(
+                    select(Episode).where(
+                        Episode.status == "downloaded",
+                        Episode.local_path != None,
+                        or_(Episode.nas_path == None, Episode.nas_path == ""),
+                    )
+                ).all())
+            send_alert(
+                "NAS unreachable",
+                "The NAS mount is not writable. Downloads are routing to local staging. "
+                "Use 'Copy to NAS' in the Archive Manager UI once the drive is back online.\n\n"
+                f"Outage duration so far: {_format_outage_duration(now - _nas_outage_started)}\n"
+                f"Episodes waiting in local staging: {stranded}",
+            )
+            _nas_alert_last_sent = now
+    elif _nas_outage_started is not None:
+        outage = _format_outage_duration(now - _nas_outage_started)
+        logger.info("NAS recovered after %s", outage)
         send_alert(
-            "NAS unreachable",
-            "The NAS mount is not writable. Downloads are routing to local staging. "
-            "Use 'Copy to NAS' in the Archive Manager UI once the drive is back online.",
+            "NAS recovered",
+            f"The NAS mount is writable again after an outage of {outage}. "
+            "New downloads will copy to the NAS as normal. Episodes that landed in "
+            "local staging during the outage still need 'Copy to NAS' in the "
+            "Archive Manager UI.",
         )
-        _nas_alert_sent = True
-    elif nas_ok:
-        _nas_alert_sent = False   # reset so we alert again if it goes down again
+        _nas_alert_last_sent = None
+        _nas_outage_started = None
 
     with Session(get_engine()) as session:
         now = datetime.utcnow()
