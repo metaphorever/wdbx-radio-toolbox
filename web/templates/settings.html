@@ -36,6 +36,39 @@
     </div>
     {% endif %}
 
+    {# Save confirmation #}
+    {% if saved %}
+    <div class="rounded border border-green-800 bg-green-950 px-4 py-3 text-sm text-green-300">
+      Settings saved.
+      {% if offline_note %}
+      <span class="text-green-500">NAS is offline, so the saved paths could not be verified —
+      they will be checked the next time the NAS is reachable.</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# Validation errors — save rejected #}
+    {% if errors %}
+    <div class="rounded border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300 space-y-2">
+      <p class="font-semibold">Settings were not saved:</p>
+      <ul class="list-disc list-inside text-xs space-y-1">
+        {% for err in errors %}<li>{{ err }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {# Validation warnings — save needs confirmation #}
+    {% if warnings %}
+    <div class="rounded border border-yellow-800 bg-yellow-950 px-4 py-3 text-sm text-yellow-300 space-y-2">
+      <p class="font-semibold">Settings were not saved — please double-check these paths:</p>
+      <ul class="list-disc list-inside text-xs space-y-1">
+        {% for warn in warnings %}<li>{{ warn }}</li>{% endfor %}
+      </ul>
+      <p class="text-xs">If the paths really are correct, tick the checkbox next to the
+      Save button to create the new directories.</p>
+    </div>
+    {% endif %}
+
     <form action="/settings/save" method="post" class="space-y-6">
 
       {# ── Download Naming ─────────────────────────────────────────── #}
@@ -96,6 +129,14 @@
         </div>
         {% endfor %}
       </div>
+
+      {% if warnings %}
+      <label class="flex items-center gap-2 text-xs text-yellow-300 cursor-pointer">
+        <input type="checkbox" name="allow_new_nas_dirs"
+               class="rounded bg-gray-900 border-gray-700">
+        These paths are correct — create the new directories on save
+      </label>
+      {% endif %}
 
       <div class="flex items-center justify-between pt-4 border-t border-gray-800">
         <p class="text-xs text-gray-600">
