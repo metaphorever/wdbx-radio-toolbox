@@ -1,5 +1,5 @@
 # WDBX Radio Toolbox — Operations Runbook
-*Last updated: 2026-05-17*
+*Last updated: 2026-10-18*
 
 This document is the persistent operational reference. It covers the live production environment, known quirks, deployment procedures, alerting setup, and deferred work. Keep it current whenever something changes.
 
@@ -22,6 +22,9 @@ This document is the persistent operational reference. It covers the live produc
 | NAS creds | `/etc/samba/wdbx-nas.creds` (root-owned, chmod 600) |
 | Local staging | `/home/wdbx/Desktop/Download-Folder` (NAS failsafe) |
 | Archive root | `/mnt/wdbx-share/Shows/AutoArchive/` |
+| NAS backup | 5 TB USB drive (WD My Passport) on the NAS, nightly scheduled backup of the NAS (since ~Sept 2026) |
+| Remote access | Tailscale node `wdbx-stream2-3020` (`tag:server`), **subnet router for `192.168.2.0/24`** so the NAS is reachable over the tailnet. IP forwarding enabled in `/etc/sysctl.d/99-tailscale.conf`. Added 2026-10-18; DWService still works independently |
+| Successor host | Dell T610 `wdbx-media`, in build — see [`t610_server.md`](t610_server.md) |
 
 ---
 
@@ -164,6 +167,16 @@ Full audit and merge of duplicate content across the NAS:
 5. Delete duplicates in waves with safety checks
 6. Schedule backups of canonical archive to secondary storage
 
+**Status 2026-10-18:** in progress, now targeting the T610 as the new home (copy forward, NAS untouched). Inventory done, exclusions agreed, duplicate sizing underway — see [`nas_consolidation.md`](nas_consolidation.md).
+
+### 7.4 Shows Filed Under the Wrong Day (Open bug)
+Some shows download into the wrong day folders. The stream PC's timezone is correct (`America/Chicago`), so it isn't the host clock. Hypotheses to check:
+1. archive.wdbx.org dates files in UTC or Pacific time → only evening/overnight shows shift a day. First question: are the misfiled shows mostly evening/overnight?
+2. Some code path names the folder from the download time instead of the air date (`download_delay_hours: 24` would make that exactly one day off).
+
+### 7.5 Stale Duplicate Checkout on the Stream PC
+There is an old copy of the toolbox in a folder on the stream PC's Desktop, alongside the real `/home/wdbx/wdbx-toolbox/`. Its `config.yaml` has placeholder SMTP values, which caused confusion on 2026-10-18. Rename or delete it so edits and deploys don't land in the wrong place.
+
 ### 7.3 Pacifica Archive Retention Window
 Most shows: 30 days. **14-day shows (short window — these are the first casualties of any prolonged outage):** The Groove (groove), The Show (theshow), The Imposter (imposter), Sat Morning Gospel (satmorningospel) — confirmed via `expires_at` during the 2026-06-12 incident, where all three Saturday 14-day shows from May 16 were lost. Some talk/public-domain shows: 46–59 days or permanent. Check `expires_at` in the DB if uncertain.
 
@@ -230,4 +243,5 @@ mount | grep wdbx-share
 | 2026-05-17 | No alerting during outage | SMTP not configured; heartbeat not implemented | Configured DreamHost SMTP + healthchecks.io heartbeat |
 | 2026-05-17 | Log file never written | `_setup_logging()` not called at startup | Wired up in `web/main.py` |
 | 2026-06-12 | Bulk NAS copy wrote ~170 episodes to `/mnt/wdbx-share/wdbx-share/Shows/…` (doubled segment) | `nas.archive_path` had been saved with a copy-paste typo via the Settings UI; `mkdir(parents=True)` silently created the wrong tree. Also: 3 episode rows had `smb://`-style `local_path` values that crashed the copy loop | Fixed config + restarted; server-side `mv` of misplaced files into the real tree; SQL `REPLACE()` to repair `nas_path`. The 3 smb rows (The Show, The Imposter, Sat Morning Gospel — all 2026-05-16) had no file anywhere and had already expired on Pacifica May 30 (14-day retention) — **those 3 episodes are lost**. Follow-up: validate NAS paths on save in Settings UI |
+| 2026-08-07 | NAS CPU fan warning (same fan replaced ~1–2 years earlier) | Fan wear; the NAS is the single point of failure for the archive | Fan replaced. Added a 5 TB USB drive on the NAS with nightly scheduled backups so a dead NAS no longer means a lost archive. Longer term: T610 replaces the NAS (see `t610_server.md`). If the NAS controller dies but disks survive: it's Linux `mdadm` RAID + XFS — reassemble read-only on any Linux box (T610 via its IT-mode HBA, never a hardware RAID card) |
 | 2026-06-10→12 | NAS unreachable for 2 days after power outage | Power outage June 10; the NAS recovered but the Ubuntu box's CIFS mount did not — `nofail` mounts only once at boot and never retries. Single NAS-down alert was sent June 10 and assumed transient; staging failsafe masked the ongoing outage | `sudo mount -a` on June 12; bulk-copied staged episodes to NAS. Prevention: `x-systemd.automount` added to fstab 2026-06-12 (mount now self-heals — see §3.1); still TODO: make NAS alert repeat daily during prolonged outages (one-shot as of this incident) |

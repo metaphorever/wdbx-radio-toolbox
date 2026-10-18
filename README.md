@@ -1,6 +1,6 @@
 # WDBX Radio Toolbox
 
-Community radio archive & processing suite for WDBX (Pacifica LA affiliate).
+Community radio archive & processing suite for WDBX (Carbondale, Illinois — a Pacifica partner station).
 
 Automates show archiving, fingerprint-based audio cleaning, and overnight programming generation from a web UI accessible over LAN.
 
@@ -49,6 +49,7 @@ shared/            Config loader, SQLModel engine, data models
 tests/             Test suite (URL assembly, fingerprinting, duration validation)
 docs/              Design decisions, dev plan, stretch goals
 reference/         Existing production scripts (read-only reference)
+tools/             One-off operational scripts (NAS inventory for the consolidation project)
 config.yaml        All configurable paths and settings
 ```
 
@@ -57,6 +58,9 @@ config.yaml        All configurable paths and settings
 - [`docs/dev_plan_v2.md`](docs/dev_plan_v2.md) — full development plan and phased roadmap
 - [`docs/design_decisions.md`](docs/design_decisions.md) — every significant decision with rationale
 - [`docs/stretch_goals.md`](docs/stretch_goals.md) — future ideas parking lot
+- [`docs/ops_runbook.md`](docs/ops_runbook.md) — live production environment, quirks, incidents
+- [`docs/t610_server.md`](docs/t610_server.md) — the T610 archive server: build, alerting, Tailscale, rebuild gotchas
+- [`docs/nas_consolidation.md`](docs/nas_consolidation.md) — NAS inventory and the canonical-archive plan
 
 ## Reference
 
