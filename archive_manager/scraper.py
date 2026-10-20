@@ -14,7 +14,7 @@ import requests
 from sqlmodel import Session, select
 
 from shared.models import Episode, Show
-from shared.station_time import station_date, station_weekday
+from shared.station_time import station_date, to_station
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +71,7 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
             air_dt = datetime.fromtimestamp(def_time, tz=timezone.utc).replace(tzinfo=None)
             groups.setdefault(air_dt, []).append(entry)
 
-        # Track the most recent entry's weekday for schedule_day self-correction.
-        # API returns newest-first, so the first key we encounter is the most recent.
-        newest_air_day: str | None = None
-
         for air_dt, group in groups.items():
-            if newest_air_day is None:
-                newest_air_day = station_weekday(air_dt)
-
             # Sort fragments chronologically by URL (filename encodes HHMMSS start time)
             group.sort(key=lambda e: e.get("mp3", ""))
             urls = [e["mp3"] for e in group]
@@ -135,17 +128,23 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
                 f" ({len(urls)} fragments)" if is_fragmented else "",
             )
 
-        # Self-correct schedule_day if the most recent archive entry says otherwise.
-        # Catches shows that moved days (e.g. Island Report: Tuesday → Thursday)
-        # and newly discovered shows that have no schedule_day yet.
-        if newest_air_day is not None and show.schedule_day != newest_air_day:
-            old_day = show.schedule_day or "unset"
-            logger.info(
-                "Schedule day updated for %s: %s → %s (from archive)",
-                show.show_key, old_day, newest_air_day,
-            )
-            show.schedule_day = newest_air_day
-            session.add(show)
+        # Self-correct schedule_day and schedule_time from the most recent archive
+        # entry. Catches shows that moved day or time (e.g. Island Report:
+        # Tuesday → Thursday; Down Home Cookin': 13:00 → 11:00) and newly
+        # discovered shows that have no schedule yet. def_time is the scheduled
+        # start, shared by all restart fragments, so it's a reliable slot time.
+        if groups:
+            newest = to_station(max(groups))
+            day, time = newest.strftime("%A"), newest.strftime("%H%M%S")
+            if (show.schedule_day, show.schedule_time) != (day, time):
+                logger.info(
+                    "Schedule updated for %s: %s %s → %s %s (from archive)",
+                    show.show_key, show.schedule_day or "unset", show.schedule_time or "unset",
+                    day, time,
+                )
+                show.schedule_day = day
+                show.schedule_time = time
+                session.add(show)
 
     session.commit()
     logger.info("sync_episodes complete: %s", counts)

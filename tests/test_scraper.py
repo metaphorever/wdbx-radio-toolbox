@@ -53,6 +53,10 @@ def _entry(slug, ts):
             "expires": ts + 14 * 86400}
 
 
+def _show(session, key):
+    return session.exec(select(Show).where(Show.show_key == key)).one()
+
+
 def test_evening_show_day_is_station_local(session, monkeypatch):
     session.add(Show(show_key="junkdrawer", display_name="The Junk Drawer",
                      expected_duration_min=120, schedule_day="Friday"))
@@ -61,8 +65,49 @@ def test_evening_show_day_is_station_local(session, monkeypatch):
 
     scraper.sync_episodes(session)
 
-    show = session.exec(select(Show).where(Show.show_key == "junkdrawer")).one()
-    assert show.schedule_day == "Thursday"
+    show = _show(session, "junkdrawer")
+    assert (show.schedule_day, show.schedule_time) == ("Thursday", "220000")
+
+
+def test_moved_time_is_corrected(session, monkeypatch):
+    # Down Home Cookin': seeded Wednesday 13:00, now airs Thursday 11:00
+    session.add(Show(show_key="downhomecooki", display_name="Down Home Cookin'",
+                     expected_duration_min=120, schedule_day="Wednesday", schedule_time="130000"))
+    session.commit()
+    _archive(monkeypatch, {"downhomecooki": [_entry("downhomecooki", _ts(2026, 10, 15, 16, 0))]})
+
+    scraper.sync_episodes(session)
+
+    show = _show(session, "downhomecooki")
+    assert (show.schedule_day, show.schedule_time) == ("Thursday", "110000")
+
+
+def test_midnight_show_belongs_to_the_day_it_starts(session, monkeypatch):
+    # Chillin with Bob Dylan: Thu 00:00 CDT (late Wednesday night) == Thu 05:00 UTC
+    session.add(Show(show_key="chillibobdylan", display_name="Chillin with Bob Dylan",
+                     expected_duration_min=120, schedule_day="Monday", schedule_time="200000"))
+    session.commit()
+    _archive(monkeypatch, {"chillibobdylan": [_entry("chillibobdylan", _ts(2026, 10, 15, 5, 0))]})
+
+    scraper.sync_episodes(session)
+
+    show = _show(session, "chillibobdylan")
+    assert (show.schedule_day, show.schedule_time) == ("Thursday", "000000")
+
+
+def test_schedule_follows_newest_entry_whatever_the_api_order(session, monkeypatch):
+    # Island Report moved Tuesday → Thursday; entries listed oldest-first here
+    session.add(Show(show_key="islandreport", display_name="Island Report", expected_duration_min=120))
+    session.commit()
+    _archive(monkeypatch, {"islandreport": [
+        _entry("islandreport-old", _ts(2026, 10, 6, 12, 0)),    # Tue 07:00 CDT
+        _entry("islandreport-new", _ts(2026, 10, 15, 12, 0)),   # Thu 07:00 CDT
+    ]})
+
+    scraper.sync_episodes(session)
+
+    show = _show(session, "islandreport")
+    assert (show.schedule_day, show.schedule_time) == ("Thursday", "070000")
 
 
 def test_gone_shows_are_still_scraped(session, monkeypatch):
