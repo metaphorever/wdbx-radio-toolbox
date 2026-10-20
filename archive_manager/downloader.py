@@ -20,6 +20,7 @@ from sqlmodel import Session, select
 from archive_manager.nas import get_archive_dir, sanitize_show_name
 from shared.config import get
 from shared.models import Episode, Show, SystemEvent
+from shared.station_time import station_date, to_station
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def _fail_episode(session: Session, episode: Episode, message: str) -> None:
     session.add(episode)
     session.add(SystemEvent(
         severity="error",
-        message=f"Download failed — {episode.show_key} {episode.air_datetime:%Y-%m-%d %H:%M}: {message}",
+        message=f"Download failed — {episode.show_key} {to_station(episode.air_datetime):%Y-%m-%d %H:%M}: {message}",
     ))
     session.commit()
 
@@ -100,7 +101,7 @@ def _build_filename(episode: Episode, show: Show | None) -> str:
     """
     template = get("archive.filename_template", "{date} [{show}] - WDBX")
 
-    date_tag = episode.air_datetime.strftime("%Y-%m-%d")
+    date_tag = station_date(episode.air_datetime).strftime("%Y-%m-%d")
 
     if show and show.display_name:
         show_label = sanitize_show_name(show.display_name)
@@ -130,7 +131,7 @@ def download_episode(episode: Episode, session: Session) -> bool:
     # Look up the Show to get display_name and schedule_day for folder/filename
     show = session.exec(select(Show).where(Show.show_key == episode.show_key)).first()
 
-    dest_dir = get_archive_dir(show or episode.show_key, episode.air_datetime.date())
+    dest_dir = get_archive_dir(show or episode.show_key, station_date(episode.air_datetime))
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     final_filename = _build_filename(episode, show)
@@ -177,7 +178,7 @@ def download_episode(episode: Episode, session: Session) -> bool:
         session.add(episode)
         session.add(SystemEvent(
             severity="info",
-            message=f"Downloaded — {show_label} {episode.air_datetime:%Y-%m-%d}{fragment_note}",
+            message=f"Downloaded — {show_label} {station_date(episode.air_datetime)}{fragment_note}",
         ))
         session.commit()
         logger.info("Episode %d downloaded: %s", episode.id, final_path)
@@ -208,7 +209,7 @@ def copy_episode_to_nas(episode: Episode, session: Session) -> bool:
         return False
 
     show = session.exec(select(Show).where(Show.show_key == episode.show_key)).first()
-    nas_dir = get_archive_dir(show or episode.show_key, episode.air_datetime.date())
+    nas_dir = get_archive_dir(show or episode.show_key, station_date(episode.air_datetime))
     nas_dir.mkdir(parents=True, exist_ok=True)
     dest = nas_dir / src.name
 

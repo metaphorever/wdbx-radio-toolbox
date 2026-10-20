@@ -14,6 +14,7 @@ import requests
 from sqlmodel import Session, select
 
 from shared.models import Episode, Show
+from shared.station_time import station_date, station_weekday
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,14 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
     Fetch recent episodes for all enabled shows and create Episode records
     for any not already in the DB.
 
+    Shows marked gone are still scraped: their final episodes stay downloadable
+    for the retention window after the show leaves the schedule, and the
+    archive simply returns nothing for them once those expire.
+
     Returns counts dict: {created, skipped, failed}.
     """
     shows = session.exec(
-        select(Show).where(Show.archive_enabled == True, Show.is_gone == False)
+        select(Show).where(Show.archive_enabled == True)
     ).all()
     counts: dict[str, int] = {"created": 0, "skipped": 0, "failed": 0}
 
@@ -72,7 +77,7 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
 
         for air_dt, group in groups.items():
             if newest_air_day is None:
-                newest_air_day = air_dt.strftime("%A")
+                newest_air_day = station_weekday(air_dt)
 
             # Sort fragments chronologically by URL (filename encodes HHMMSS start time)
             group.sort(key=lambda e: e.get("mp3", ""))
@@ -106,7 +111,7 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
                         session.add(existing)
                         logger.info(
                             "Fragments updated for %s %s: %d → %d URL(s)",
-                            show.show_key, air_dt.strftime("%Y-%m-%d"),
+                            show.show_key, station_date(air_dt),
                             len(existing_urls), len(urls),
                         )
                 counts["skipped"] += 1
@@ -126,7 +131,7 @@ def sync_episodes(session: Session, num: int = EPISODES_PER_SHOW) -> dict[str, i
             counts["created"] += 1
             logger.info(
                 "Queued: %s %s%s",
-                show.show_key, air_dt.strftime("%Y-%m-%d"),
+                show.show_key, station_date(air_dt),
                 f" ({len(urls)} fragments)" if is_fragmented else "",
             )
 

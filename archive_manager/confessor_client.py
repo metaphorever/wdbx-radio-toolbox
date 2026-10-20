@@ -11,6 +11,7 @@ by the live test suite.
 """
 from __future__ import annotations
 
+import html
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -52,6 +53,19 @@ class ScheduledShow:
     @property
     def duration_minutes(self) -> int:
         return self.duration_seconds // 60
+
+
+@dataclass
+class ScheduledAiring:
+    show_key: str           # sh_altid
+    display_name: str       # sh_name, HTML entities decoded
+    air_timestamp: int      # dte: Unix timestamp of this airing
+    duration_seconds: int   # len
+
+    @property
+    def air_datetime(self) -> datetime:
+        """Naive UTC datetime, consistent with Episode.air_datetime in the DB."""
+        return datetime.fromtimestamp(self.air_timestamp, tz=timezone.utc).replace(tzinfo=None)
 
 
 @dataclass
@@ -104,7 +118,7 @@ def get_all_shows(*, timeout: int = DEFAULT_TIMEOUT) -> list[ScheduledShow]:
         day_str = _DAY_NAMES[day_num] if 0 <= day_num <= 6 else s.get("day", "").strip()
         return ScheduledShow(
             show_key=show_key,
-            display_name=s.get("sh_name", "").strip(),
+            display_name=html.unescape(s.get("sh_name", "")).strip(),
             day=day_str,
             day_num=day_num,
             start_seconds=int(s.get("sh_shour") or 0),
@@ -150,6 +164,55 @@ def get_all_shows(*, timeout: int = DEFAULT_TIMEOUT) -> list[ScheduledShow]:
         logger.warning("getshows: unexpected response type %s", type(data))
 
     return shows
+
+
+def get_schedule(
+    start: datetime,
+    end: datetime,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> list[ScheduledAiring]:
+    """
+    Fetch every dated airing between start and end (naive UTC).
+
+    Unlike getshows (the recurring weekly grid), this includes shows that were
+    scheduled as individual dates. Those can be on the air without ever
+    appearing in getshows — Big Elvis Show and Reelin' In the Years in Oct 2026.
+
+    Response shape:
+      {altid: {"sh_altid", "sh_name", ..., "def_time": [{"dte", "day", "len", "id"}, ...]}, ...}
+    """
+    stdte = int(start.replace(tzinfo=timezone.utc).timestamp())
+    endte = int(end.replace(tzinfo=timezone.utc).timestamp())
+    resp = requests.get(
+        f"{SCHEDULE_API}?req=sched&stdte={stdte}&endte={endte}&json=1",
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    if not isinstance(data, dict):
+        if data:  # PHP encodes an empty result as []
+            logger.warning("sched: unexpected response type %s", type(data))
+        return []
+
+    airings: list[ScheduledAiring] = []
+    for key, s in data.items():
+        if not isinstance(s, dict):
+            continue
+        show_key = (s.get("sh_altid") or key or "").strip()
+        if not show_key:
+            continue
+        name = html.unescape(s.get("sh_name") or "").strip()
+        for e in s.get("def_time") or []:
+            if isinstance(e, dict) and e.get("dte"):
+                airings.append(ScheduledAiring(
+                    show_key=show_key,
+                    display_name=name,
+                    air_timestamp=int(e["dte"]),
+                    duration_seconds=int(e.get("len") or 0),
+                ))
+    return airings
 
 
 def get_gone_shows(*, timeout: int = DEFAULT_TIMEOUT) -> list[dict]:
@@ -218,7 +281,7 @@ def get_show_by_key(show_key: str, *, timeout: int = DEFAULT_TIMEOUT) -> Schedul
         return None
     return ScheduledShow(
         show_key=s.get("sh_altid", "").strip(),
-        display_name=s.get("sh_name", "").strip(),
+        display_name=html.unescape(s.get("sh_name", "")).strip(),
         day=s.get("day", s.get("sh_big_days", "")).strip(),
         day_num=-1,  # not returned by this endpoint
         start_seconds=int(s.get("sh_shour") or 0),

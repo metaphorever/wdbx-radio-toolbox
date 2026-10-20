@@ -21,6 +21,7 @@ from archive_manager.scraper import EPISODES_BACKLOG, sync_episodes
 from archive_manager.seeder import seed_from_file
 from shared.database import get_session
 from shared.models import Episode, Show, SystemEvent
+from shared.station_time import to_station
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/archive")
@@ -31,6 +32,7 @@ templates = Jinja2Templates(env=jinja2.Environment(
     auto_reload=True,
     cache_size=0,
 ))
+templates.env.filters["station_time"] = to_station  # Episode times are stored UTC
 
 DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 

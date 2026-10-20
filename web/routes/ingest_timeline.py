@@ -20,6 +20,7 @@ from sqlmodel import Session, func, select
 
 from shared.database import get_session
 from shared.models import CanonicalEpisode, Episode, IngestFile, ScheduleNote, Show
+from shared.station_time import station_date
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ingest/timeline")
@@ -94,6 +95,9 @@ def timeline_page(
         select(func.min(Episode.air_datetime)).where(Episode.show_key == show_key)
     ).one()
 
+    # Episode times are UTC; IngestFile/CanonicalEpisode dates are already station-local
+    if earliest_episode:
+        earliest_episode = station_date(earliest_episode)
     candidates = [d for d in [earliest_ingest, earliest_canonical, earliest_episode] if d]
     if candidates:
         earliest = min(_date_key(d) for d in candidates)
@@ -128,7 +132,7 @@ def timeline_page(
     ).all()
     archive_by_date: dict[date, list[Episode]] = {}
     for ep in archive_eps:
-        dk = _date_key(ep.air_datetime)
+        dk = station_date(ep.air_datetime)
         archive_by_date.setdefault(dk, []).append(ep)
 
     notes = session.exec(

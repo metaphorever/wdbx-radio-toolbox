@@ -22,6 +22,7 @@ from archive_manager.scraper import sync_episodes
 from shared.config import get
 from shared.database import get_engine
 from shared.models import AnalysisResult, Episode, IngestFile, SystemEvent
+from shared.station_time import station_date
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ def _download_job() -> None:
         for e in expired:
             e.status = "expired"
             session.add(e)
-            logger.info("Skipping expired episode: %s %s", e.show_key, e.air_datetime.strftime("%Y-%m-%d"))
+            logger.info("Skipping expired episode: %s %s", e.show_key, station_date(e.air_datetime))
         if expired:
             session.commit()
 

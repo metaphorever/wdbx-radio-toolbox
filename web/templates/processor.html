@@ -109,7 +109,7 @@
             {% set ep = row.episode %}
             <tr class="hover:bg-gray-900/40 {% if r.eas_detected %}bg-red-950/10{% endif %}">
               <td class="px-3 py-2 text-gray-300">{{ ep.show_key }}</td>
-              <td class="px-3 py-2 text-gray-400">{{ ep.air_datetime.strftime("%Y-%m-%d") }}</td>
+              <td class="px-3 py-2 text-gray-400">{{ (ep.air_datetime|station_time).strftime("%Y-%m-%d") }}</td>
               <td class="px-3 py-2 text-center">
                 {% if r.eas_detected %}
                   <span class="text-red-400 font-bold">YES</span>
