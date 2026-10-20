@@ -19,6 +19,7 @@ from sqlmodel import Session, func, select
 from processor.analyzer import analyze_episode, ANALYSIS_VERSION
 from shared.database import get_session
 from shared.models import AnalysisResult, Episode, SegmentFingerprint, Show, SystemEvent
+from shared.station_time import to_station
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/processor")
@@ -29,6 +30,7 @@ templates = Jinja2Templates(env=jinja2.Environment(
     auto_reload=True,
     cache_size=0,
 ))
+templates.env.filters["station_time"] = to_station  # Episode times are stored UTC
 
 CLASSIFICATIONS = [
     "underwriting", "theme", "station_id", "promo",

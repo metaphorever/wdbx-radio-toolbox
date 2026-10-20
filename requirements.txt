@@ -9,7 +9,8 @@ python-multipart>=0.0.9
 aiofiles>=23.2.1
 
 # Database
-sqlmodel>=0.0.19
+# <0.0.45: 0.0.45 rejects naive datetimes, and every timestamp here is naive UTC
+sqlmodel>=0.0.19,<0.0.45
 
 # HTTP / scraping
 requests>=2.32.3
@@ -33,6 +34,9 @@ apscheduler>=3.10.4
 
 # Config
 pyyaml>=6.0.1
+
+# Timezone data for zoneinfo where the OS has none (Windows dev boxes; Ubuntu has it already)
+tzdata>=2024.1
 
 # Dev / testing
 pytest>=8.2.0

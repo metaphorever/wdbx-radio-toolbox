@@ -5,12 +5,22 @@ Expands runbook §7.2. Goal: build **one canonical copy of every show** — cano
 
 ---
 
-## Where We Left Off (2026-10-18)
+## Where We Left Off (2026-10-19)
 
-- Full read-only inventory of the NAS is done: `~/inventory/nas.db` on the T610.
-- Exclusions recorded (see §3). **In scope: 2,730 GB in 25,471 files.**
-- `quick_hash.py` was running on the T610 in the background over Tailscale: 19,643 candidate files, ~158 s per 500 → roughly 1 h 40 min after the remount. Check it with `tail ~/inventory/quick_hash.log`; it is resumable, so if it died just start it again.
-- **Next:** when it says `done`, run `python3 ~/inventory/scope_summary.py`. The "Copies by content … leaves" line is the best estimate of the real archive size, and decides whether it fits on `testpool` (~1.85 TB comfortable, ~2.3 TB raw) or needs bigger drives.
+- Full read-only inventory and quick-hash pass are done: `~/inventory/nas.db` on the T610.
+- **Real archive ≈ 1,716 GB.** In scope 2,730 GB; 1,014 GB of it is byte-for-byte copies (only ~560 GB of those share a name — the rest are renamed copies). Still to be confirmed with full hashes on the station LAN; a fingerprint pass may shrink it further.
+- It fits `testpool` at ~74% (~140 GB under the 80% line) — enough to build and test the canonical copy, not a long-term home.
+- **Growth ≈ 43 GB/month (~0.5 TB/year)** of AutoArchive since mid-2026. Once the canonical archive is loaded, `testpool` has ~3 months of headroom → that's the deadline for the station move and the final 6× 2 TB pool (~9 years of headroom).
+- **"Don't lose these":** 88 files / 13.6 GB in `SORT THESE FILES` have no copy anywhere else (`~/inventory/sort_unique.txt`).
+- `Show Archives/Misc Music/` is back in scope (it holds some pre-auto-archive shows); these numbers predate that change.
+- **Next:** the folder-triage tool (§6), then the ingest upgrades for the old material.
+
+## Decisions (2026-10-19)
+
+- **Work oldest → newest.** Auto-archive v1 came online at the end of 2023, so **2024 is the era boundary**. 2024+ is large and consistent and can wait for space; pre-2024 needs hand categorisation and is the most likely to be unique.
+- Many old shows survive as the **MP3 the DJ submitted** — arbitrary names and encodings; runtime is the only reliable signal. **Show-length threshold: 20 minutes**, reviewing everything at or above it (30/60/120 and in between, and longer).
+- **Collections, not exclusions.** Long non-station material (Joe Frank, opera, Radiolab, …) is kept, just not in the station archive. Draft collections: station archive · syndicated/outside programmes · music library · other people's projects (IAN, Darby — kept as-is) · needs a look. Each becomes its own folder tree and ZFS dataset.
+- **Station manager request:** a **Recent** grouping (rolling 12 months) shared read-only to DJs on the studio PC for overnight coverage; long-term archive grouped **by year**. Proposed: each file lives once at `archive/{year}/{Show}/…`, and a nightly job maintains `Recent/{Show}/` as hardlinks (no extra space, nothing ever moved). Open question for the station manager: Recent by show, or by weekday then show?
 
 ---
 
@@ -38,7 +48,7 @@ Expands runbook §7.2. Goal: build **one canonical copy of every show** — cano
 | Share | Size (GB) | Files | Scope |
 |-------|-----------|-------|-------|
 | Add to Share | 1,838.7 | 32,251 | In, minus exclusions below. Toolbox's live share (`Shows/AutoArchive`) |
-| Show Archives | 1,110.9 | 12,442 | In, minus `Misc Music/` |
+| Show Archives | 1,110.9 | 12,442 | In (incl. `Misc Music/` — back in scope 2026-10-19) |
 | Music | 121.4 | 13,700 | **Out** — random MP3s, no show archives (separate future project) |
 | Prerecorded Shows | 74.6 | 2,100 | **Out** — syndicated (Radiolab, Twilight Zone, …) |
 | Underwriting | 0.1 | 120 | In |
@@ -54,7 +64,8 @@ Excluded folders (stored in the `exclude` table, applied through the `scope` vie
 | Add to Share | `2026 CD Import/` | Music import, not archive |
 | Prerecorded Shows | *(whole share)* | Syndicated content |
 | Music | *(whole share)* | Random MP3s |
-| Show Archives | `Misc Music/` | Random MP3s (incl. `OVERNIGHT III`) |
+
+`Show Archives/Misc Music/` was excluded at first as random MP3s, then put back in scope: it also holds some pre-auto-archive show recordings.
 
 **Keep in scope and treat carefully:** `Show Archives/SORT THESE FILES/` (56 GB). Mostly raw archive downloads, likely including pre-auto-archive manual downloads from the old station manager PC backup — possibly the **only** copies of early shows. After hashing, list its files with no copy anywhere else; that's the "don't lose these" set.
 
@@ -103,11 +114,12 @@ done
 
 ## 6. Next Steps
 
-1. Final quick-hash numbers → decide whether the curated archive fits on `testpool`. If not: the spare 3 TB drive has no free bay, so the route is bigger drives (e.g. the NAS's 2 TB drives once retired) in a new pool + `zfs send`.
-2. List the unique files in `SORT THESE FILES`.
-3. Define the canonical schema. Starting points already in the repo: filename template `{date} - {show} - WDBX` (runbook §5.3), hierarchy `{year}/{show-slug}/`, and `ingest/classifier.parse_filename`, which already recognises seven naming schemes (raw `wdbx_YYMMDD_HHMMSS`, both toolbox formats, …).
-4. Move the T610 to the station. Full-file hashes and the canonical copy run over the station LAN — at ~3.7 MB/s, 2 TB over Tailscale would take about a week.
-5. Second pass with audio fingerprints for same-show-different-file cases (re-encodes, trims, fragments).
+1. ~~Final quick-hash numbers~~ (done: ~1.7 TB, fits `testpool` for now). ~~Unique files in `SORT THESE FILES`~~ (done: 88 files).
+2. **Folder triage** — a small one-off tool, not by hand: export one row per folder (count, size, date range, % pre-2024, # show-length files, sample names, top ID3 artists/albums, suggested collection) to a spreadsheet; fill in a `collection` column top-down (a value on a folder covers everything under it, deeper rows override); import it back as folder rules and report anything unclassified. The show-length column needs one more background pass reading audio headers.
+3. **Ingest upgrades for the old material** (toolbox Phase 4 already has review, canonical selection, re-air chains and timelines): crawl non-MP3 audio (wav/m4a/flac/aif/wma); record mtime + ID3 title/artist/album/date/comment and show them on review cards; oldest-first "best known date" sort with era/folder/collection filters; configurable show-length threshold (20 min); historical (gone) shows selectable and creatable from review; crawl as a background job.
+4. Define the canonical schema. Starting points already in the repo: filename template `{date} - {show} - WDBX` (runbook §5.3), hierarchy `{year}/{show-slug}/`, and `ingest/classifier.parse_filename`, which already recognises seven naming schemes (raw `wdbx_YYMMDD_HHMMSS`, both toolbox formats, …).
+5. Move the T610 to the station. Full-file hashes and the canonical copy run over the station LAN — at ~3.7 MB/s, 2 TB over Tailscale would take about a week.
+6. Second pass with audio fingerprints for same-show-different-file cases (re-encodes, trims, fragments).
 
 ---
 

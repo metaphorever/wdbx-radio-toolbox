@@ -74,11 +74,16 @@ def nas_is_writable() -> bool:
         return False
 
 
-def get_archive_dir(show, air_date: date) -> Path:
+def get_archive_dir(show, air_date: date | None) -> Path:
     """
     Return the directory to save files for this show/date.
     Structure: {base}/{weekday}/{sanitized_show_name}/
     Uses NAS if writable, otherwise local staging (logged as warning).
+
+    The weekday folder is the day this episode aired, so `air_date` must be the
+    station-local date (shared.station_time.station_date), never the UTC date.
+    Filing by the episode's own day (not show.schedule_day) also keeps a show
+    that moved days or airs twice a week from bouncing between folders.
 
     `show` may be a Show model instance or a plain slug string (legacy fallback).
     """
@@ -91,7 +96,9 @@ def get_archive_dir(show, air_date: date) -> Path:
         logger.warning("NAS unavailable — routing %s to local staging: %s", slug, base)
 
     # Determine weekday folder and sanitized show name
-    if hasattr(show, "schedule_day") and show.schedule_day:
+    if air_date is not None:
+        day_folder = air_date.strftime("%A")
+    elif hasattr(show, "schedule_day") and show.schedule_day:
         day_folder = show.schedule_day
     else:
         day_folder = "Unknown"

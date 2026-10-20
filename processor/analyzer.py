@@ -28,6 +28,7 @@ from processor.segment_matcher import (
 )
 from shared.config import get
 from shared.models import AnalysisResult, Episode, Show, SystemEvent
+from shared.station_time import station_date
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def analyze_episode(episode: Episode, session: Session) -> AnalysisResult | None
     if not audio_path:
         logger.warning("No audio file for episode %d (%s %s)",
                        episode.id, episode.show_key,
-                       episode.air_datetime.strftime("%Y-%m-%d"))
+                       station_date(episode.air_datetime))
         return None
 
     logger.info("Analyzing episode %d: %s", episode.id, audio_path.name)
@@ -129,7 +130,7 @@ def analyze_episode(episode: Episode, session: Session) -> AnalysisResult | None
     if eas_detected:
         session.add(SystemEvent(
             severity="warning",
-            message=(f"EAS detected — {episode.show_key} {episode.air_datetime:%Y-%m-%d} "
+            message=(f"EAS detected — {episode.show_key} {station_date(episode.air_datetime)} "
                      f"({len(eas_hits)} hit(s))"),
         ))
 

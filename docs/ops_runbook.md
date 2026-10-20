@@ -1,5 +1,5 @@
 # WDBX Radio Toolbox — Operations Runbook
-*Last updated: 2026-10-18*
+*Last updated: 2026-10-19*
 
 This document is the persistent operational reference. It covers the live production environment, known quirks, deployment procedures, alerting setup, and deferred work. Keep it current whenever something changes.
 
@@ -169,10 +169,38 @@ Full audit and merge of duplicate content across the NAS:
 
 **Status 2026-10-18:** in progress, now targeting the T610 as the new home (copy forward, NAS untouched). Inventory done, exclusions agreed, duplicate sizing underway — see [`nas_consolidation.md`](nas_consolidation.md).
 
-### 7.4 Shows Filed Under the Wrong Day (Open bug)
-Some shows download into the wrong day folders. The stream PC's timezone is correct (`America/Chicago`), so it isn't the host clock. Hypotheses to check:
-1. archive.wdbx.org dates files in UTC or Pacific time → only evening/overnight shows shift a day. First question: are the misfiled shows mostly evening/overnight?
-2. Some code path names the folder from the download time instead of the air date (`download_delay_hours: 24` would make that exactly one day off).
+### 7.4 Shows Filed Under the Wrong Day (fixed in code 2026-10-19; existing files still misfiled)
+**Root cause:** `Episode.air_datetime` is stored as UTC (correct), but the scraper took the show's weekday from the UTC value and the downloader dated filenames from it. Any show starting at 7pm or later (6pm or later in standard time) is already the next day in UTC, so it got the next day's folder **and** the next day's date in its filename, and its `schedule_day` was "self-corrected" to the wrong day. 6pm shows flipped every DST change.
+
+**Fix:** `shared/station_time.py` + `station.timezone` in config. Folders now use the day each episode actually aired (not `show.schedule_day`), so moved and twice-weekly shows stop bouncing between folders. Wrong `schedule_day` values correct themselves on the next scrape.
+
+**Still to do:** episodes downloaded before the fix are still in the wrong folder with the wrong date. Count them on the stream PC (read-only):
+```bash
+python3 - <<'EOF'
+import sqlite3
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+tz = ZoneInfo("America/Chicago")
+con = sqlite3.connect("file:/home/wdbx/wdbx-toolbox/wdbx.db?mode=ro", uri=True)
+bad, total = {}, 0
+for key, air in con.execute("SELECT show_key, air_datetime FROM episode WHERE status = 'downloaded'"):
+    total += 1
+    utc = datetime.fromisoformat(air).replace(tzinfo=timezone.utc)
+    if utc.date() != utc.astimezone(tz).date():
+        bad[key] = bad.get(key, 0) + 1
+print(f"{sum(bad.values())} of {total} downloaded episodes are dated a day late")
+for k, n in sorted(bad.items(), key=lambda x: -x[1]):
+    print(f"{n:5d}  {k}")
+EOF
+```
+Then decide between a one-off re-file on the NAS and correcting them in the NAS consolidation. Either way, take true air dates from the `episode` table, not from these filenames.
+
+### 7.6 New Shows Must Come From the Dated Schedule (fixed in code 2026-10-19)
+Discovery used only Confessor `getshows` (the weekly grid). Shows scheduled as individual dates never appear there — see the 2026-10-19 incident. Discovery now merges `getshows` with `sched` over a window (`confessor.discovery_lookback_days` / `discovery_lookahead_days`), and emails a list of every show it adds. Names that look like placeholders (TBA, Overnight, Filler, or starting with "Open") are added with archiving **off** and flagged in that email instead of being skipped. The old substring match on "open" had silently dropped "Balcony Is Open".
+
+Shows marked gone are now still scraped, so their last episodes inside the retention window get downloaded.
+
+Known gaps: `Show.schedule_day` holds one day, so a twice-weekly show's listed day flips between its slots. Filing is unaffected now, but the ingest timeline still assumes one weekday for a show's whole history.
 
 ### 7.5 Stale Duplicate Checkout on the Stream PC
 There is an old copy of the toolbox in a folder on the stream PC's Desktop, alongside the real `/home/wdbx/wdbx-toolbox/`. Its `config.yaml` has placeholder SMTP values, which caused confusion on 2026-10-18. Rename or delete it so edits and deploys don't land in the wrong place.
@@ -243,5 +271,6 @@ mount | grep wdbx-share
 | 2026-05-17 | No alerting during outage | SMTP not configured; heartbeat not implemented | Configured DreamHost SMTP + healthchecks.io heartbeat |
 | 2026-05-17 | Log file never written | `_setup_logging()` not called at startup | Wired up in `web/main.py` |
 | 2026-06-12 | Bulk NAS copy wrote ~170 episodes to `/mnt/wdbx-share/wdbx-share/Shows/…` (doubled segment) | `nas.archive_path` had been saved with a copy-paste typo via the Settings UI; `mkdir(parents=True)` silently created the wrong tree. Also: 3 episode rows had `smb://`-style `local_path` values that crashed the copy loop | Fixed config + restarted; server-side `mv` of misplaced files into the real tree; SQL `REPLACE()` to repair `nas_path`. The 3 smb rows (The Show, The Imposter, Sat Morning Gospel — all 2026-05-16) had no file anywhere and had already expired on Pacifica May 30 (14-day retention) — **those 3 episodes are lost**. Follow-up: validate NAS paths on save in Settings UI |
+| 2026-10-19 | 7 shows on the air but never archived (Alphabet Soup, Big Elvis Show, Earth Riot Radio, Inside Carbondale, The Junk Drawer, Reelin' In the Years, 877-WAX-NOW) | Discovery read only Confessor `getshows`; these were scheduled as individual dates and only appear in `sched` | Added the shows by hand and ran a scrape + download: 11 episodes saved, several within 1–3 days of their 14-day expiry. Reelin' In the Years 10/5 expired first (syndicated, acceptable). Code fix: §7.6 |
 | 2026-08-07 | NAS CPU fan warning (same fan replaced ~1–2 years earlier) | Fan wear; the NAS is the single point of failure for the archive | Fan replaced. Added a 5 TB USB drive on the NAS with nightly scheduled backups so a dead NAS no longer means a lost archive. Longer term: T610 replaces the NAS (see `t610_server.md`). If the NAS controller dies but disks survive: it's Linux `mdadm` RAID + XFS — reassemble read-only on any Linux box (T610 via its IT-mode HBA, never a hardware RAID card) |
 | 2026-06-10→12 | NAS unreachable for 2 days after power outage | Power outage June 10; the NAS recovered but the Ubuntu box's CIFS mount did not — `nofail` mounts only once at boot and never retries. Single NAS-down alert was sent June 10 and assumed transient; staging failsafe masked the ongoing outage | `sudo mount -a` on June 12; bulk-copied staged episodes to NAS. Prevention: `x-systemd.automount` added to fstab 2026-06-12 (mount now self-heals — see §3.1); still TODO: make NAS alert repeat daily during prolonged outages (one-shot as of this incident) |
