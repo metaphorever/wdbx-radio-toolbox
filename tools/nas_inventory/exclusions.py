@@ -15,7 +15,6 @@ EXCLUDE = [
     ("Add to Share", "2026 CD Import/"),
     ("Prerecorded Shows", ""),
     ("Music", ""),
-    ("Show Archives", "Misc Music/"),
 ]
 
 con = sqlite3.connect(DB)
