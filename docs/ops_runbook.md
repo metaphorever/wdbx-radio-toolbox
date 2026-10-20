@@ -172,7 +172,7 @@ Full audit and merge of duplicate content across the NAS:
 ### 7.4 Shows Filed Under the Wrong Day (fixed in code 2026-10-19; existing files still misfiled)
 **Root cause:** `Episode.air_datetime` is stored as UTC (correct), but the scraper took the show's weekday from the UTC value and the downloader dated filenames from it. Any show starting at 7pm or later (6pm or later in standard time) is already the next day in UTC, so it got the next day's folder **and** the next day's date in its filename, and its `schedule_day` was "self-corrected" to the wrong day. 6pm shows flipped every DST change.
 
-**Fix:** `shared/station_time.py` + `station.timezone` in config. Folders now use the day each episode actually aired (not `show.schedule_day`), so moved and twice-weekly shows stop bouncing between folders. Wrong `schedule_day` values correct themselves on the next scrape.
+**Fix:** `shared/station_time.py` + `station.timezone` in config. Folders now use the day each episode actually aired (not `show.schedule_day`), so moved and twice-weekly shows stop bouncing between folders. Each scrape resets a show's `schedule_day` **and** `schedule_time` from its newest recording (station time), so wrong days and stale times (e.g. Down Home Cookin' left at 13:00 after moving to 11:00) correct themselves. Shows with archiving off are not scraped, so their listed slot stays as last set.
 
 **Still to do:** episodes downloaded before the fix are still in the wrong folder with the wrong date. Count them on the stream PC (read-only):
 ```bash
