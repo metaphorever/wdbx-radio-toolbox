@@ -193,7 +193,17 @@ for k, n in sorted(bad.items(), key=lambda x: -x[1]):
     print(f"{n:5d}  {k}")
 EOF
 ```
-Then decide between a one-off re-file on the NAS and correcting them in the NAS consolidation. Either way, take true air dates from the `episode` table, not from these filenames.
+**Count on 2026-10-19: 437 of 1,734.** 271 were the UTC bug (evening shows: next-day folder and date), 145 were an early March 2026 layout (`AutoArchive/2026/{slug}/{slug}_YYMMDD_HHMMSS.mp3`, UTC times in the name), 16 were Democracy Now! filed under Monday every weekday, and 5 were midnight shows filed under the previous evening.
+
+**Re-filing:** `tools/refile_misfiled.py` moves each misfiled episode to `{archive_path}/{weekday aired}/{Show}/{filename for the date aired}` and updates its paths in the DB. It never overwrites or deletes; targets that already exist are reported and left alone. Files already in the right folder with the right date are not touched, so bracketed names stay as they are. It writes a log, and `--undo LOGFILE` puts everything back.
+```bash
+cd /home/wdbx/wdbx-toolbox
+sudo -u wdbx python3 tools/refile_misfiled.py              # dry run; plan in ~/refile_plan.tsv
+sudo systemctl stop wdbx-toolbox
+sudo -u wdbx python3 tools/refile_misfiled.py --apply      # log in ~/refile_log_*.tsv
+sudo systemctl start wdbx-toolbox
+```
+For the NAS consolidation, take true air dates from the `episode` table, not from filenames.
 
 ### 7.6 New Shows Must Come From the Dated Schedule (fixed in code 2026-10-19)
 Discovery used only Confessor `getshows` (the weekly grid). Shows scheduled as individual dates never appear there — see the 2026-10-19 incident. Discovery now merges `getshows` with `sched` over a window (`confessor.discovery_lookback_days` / `discovery_lookahead_days`), and emails a list of every show it adds. Names that look like placeholders (TBA, Overnight, Filler, or starting with "Open") are added with archiving **off** and flagged in that email instead of being skipped. The old substring match on "open" had silently dropped "Balcony Is Open".
