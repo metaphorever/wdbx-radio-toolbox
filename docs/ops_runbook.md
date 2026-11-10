@@ -1,5 +1,5 @@
 # WDBX Radio Toolbox — Operations Runbook
-*Last updated: 2026-10-19*
+*Last updated: 2026-11-09*
 
 This document is the persistent operational reference. It covers the live production environment, known quirks, deployment procedures, alerting setup, and deferred work. Keep it current whenever something changes.
 
@@ -193,7 +193,9 @@ for k, n in sorted(bad.items(), key=lambda x: -x[1]):
     print(f"{n:5d}  {k}")
 EOF
 ```
-Then decide between a one-off re-file on the NAS and correcting them in the NAS consolidation. Either way, take true air dates from the `episode` table, not from these filenames.
+**Count on 2026-10-19: 437 of 1,734.** 271 were the UTC bug (evening shows: next-day folder and date), 145 were an early March 2026 layout (`AutoArchive/2026/{slug}/{slug}_YYMMDD_HHMMSS.mp3`, UTC times in the name), 16 were Democracy Now! filed under Monday every weekday, and 5 were midnight shows filed under the previous evening. The full list is on the stream PC at `/home/wdbx/misfiled.tsv`.
+
+**Decision: don't re-file them on the NAS.** The NAS's nightly USB backup copies any file it hasn't seen and doesn't track moves, so re-filing would leave ~437 duplicates (~70 GB) on the backup. New downloads are filed correctly, so this set is frozen. The consolidation copies forward to the T610 using true air dates from the `episode` table — never these filenames or folders — which fixes placement without touching the NAS. A re-file tool exists on the unmerged branch `claude/refile-misfiled` (`tools/refile_misfiled.py`: dry run by default, never overwrites, logs and undoes) if that ever changes; don't merge or run it while the NAS backup works this way.
 
 ### 7.6 New Shows Must Come From the Dated Schedule (fixed in code 2026-10-19)
 Discovery used only Confessor `getshows` (the weekly grid). Shows scheduled as individual dates never appear there — see the 2026-10-19 incident. Discovery now merges `getshows` with `sched` over a window (`confessor.discovery_lookback_days` / `discovery_lookahead_days`), and emails a list of every show it adds. Names that look like placeholders (TBA, Overnight, Filler, or starting with "Open") are added with archiving **off** and flagged in that email instead of being skipped. The old substring match on "open" had silently dropped "Balcony Is Open".
