@@ -1,5 +1,5 @@
 # NAS Consolidation — Inventory & Plan
-*Last updated: 2026-10-18*
+*Last updated: 2026-11-09*
 
 Expands runbook §7.2. Goal: build **one canonical copy of every show** — canonical names, schema and folder hierarchy — on the T610 ([`t610_server.md`](t610_server.md)), instead of mirroring the NAS's redundant copies, old PC backups and random MP3s onto the new server.
 
@@ -9,9 +9,9 @@ Expands runbook §7.2. Goal: build **one canonical copy of every show** — cano
 
 - Full read-only inventory and quick-hash pass are done: `~/inventory/nas.db` on the T610.
 - **Real archive ≈ 1,716 GB.** In scope 2,730 GB; 1,014 GB of it is byte-for-byte copies (only ~560 GB of those share a name — the rest are renamed copies). Still to be confirmed with full hashes on the station LAN; a fingerprint pass may shrink it further.
-- It fits `testpool` at ~74% (~140 GB under the 80% line) — enough to build and test the canonical copy, not a long-term home.
-- **Growth ≈ 43 GB/month (~0.5 TB/year)** of AutoArchive since mid-2026. Once the canonical archive is loaded, `testpool` has ~3 months of headroom → that's the deadline for the station move and the final 6× 2 TB pool (~9 years of headroom).
-- **"Don't lose these":** 88 files / 13.6 GB in `SORT THESE FILES` have no copy anywhere else (`~/inventory/sort_unique.txt`).
+- **Space (updated 2026-11-09):** the 6×600 GB `testpool` is gone; the T610 now has pool `wdbx` (a mirror of two donated 3 TB drives, 2.63 TiB — see [`t610_server.md`](t610_server.md)). The archive would fill ~59% of it, leaving ~0.6 TB before the 80% line.
+- **Growth ≈ 43 GB/month (~0.5 TB/year)** of AutoArchive since mid-2026 → ~14 months of headroom once the canonical archive is loaded, *before* adding any other collections. Adding the waiting 2 TB pair brings it to ~4.4 TiB; the NAS's 2 TB drives add more pairs when it retires.
+- **"Don't lose these":** 88 files / 13.6 GB in `SORT THESE FILES` have no copy anywhere else on the NAS (`~/inventory/sort_unique.txt`). A third copy now sits on the T610 at `/srv/wdbx/staging/rescue/`, checksummed.
 - `Show Archives/Misc Music/` is back in scope (it holds some pre-auto-archive shows); these numbers predate that change.
 - **Next:** the folder-triage tool (§6), then the ingest upgrades for the old material.
 
@@ -114,7 +114,7 @@ done
 
 ## 6. Next Steps
 
-1. ~~Final quick-hash numbers~~ (done: ~1.7 TB, fits `testpool` for now). ~~Unique files in `SORT THESE FILES`~~ (done: 88 files).
+1. ~~Final quick-hash numbers~~ (done: ~1.7 TB; fits pool `wdbx`). ~~Unique files in `SORT THESE FILES`~~ (done: 88 files).
 2. **Folder triage** — a small one-off tool, not by hand: export one row per folder (count, size, date range, % pre-2024, # show-length files, sample names, top ID3 artists/albums, suggested collection) to a spreadsheet; fill in a `collection` column top-down (a value on a folder covers everything under it, deeper rows override); import it back as folder rules and report anything unclassified. The show-length column needs one more background pass reading audio headers.
 3. **Ingest upgrades for the old material** (toolbox Phase 4 already has review, canonical selection, re-air chains and timelines): crawl non-MP3 audio (wav/m4a/flac/aif/wma); record mtime + ID3 title/artist/album/date/comment and show them on review cards; oldest-first "best known date" sort with era/folder/collection filters; configurable show-length threshold (20 min); historical (gone) shows selectable and creatable from review; crawl as a background job.
 4. Define the canonical schema. Starting points already in the repo: filename template `{date} - {show} - WDBX` (runbook §5.3), hierarchy `{year}/{show-slug}/`, and `ingest/classifier.parse_filename`, which already recognises seven naming schemes (raw `wdbx_YYMMDD_HHMMSS`, both toolbox formats, …).
